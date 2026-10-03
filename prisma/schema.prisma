@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum PermissionLevel {
+  None
+  View
+  Edit
+}
+
+enum PermissionScope {
+  Own
+  Team
+  Firm
+}
+
+model Firm {
+  id              String           @id @default(cuid())
+  name            String
+  createdAt       DateTime         @default(now())
+  users           User[]
+  roles           Role[]
+  invites         Invitation[]
+  auditLogs       AuditLog[]
+  rolePermissions RolePermission[]
+  supervisorLinks SupervisorLink[]
+  sessions        Session[]
+  loginChallenges LoginChallenge[]
+  passwordResets  PasswordReset[]
+}
+
+model User {
+  id                 String           @id @default(cuid())
+  firmId             String
+  firm               Firm             @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  roleId             String?
+  role               Role?            @relation(fields: [roleId, firmId], references: [id, firmId], onDelete: NoAction)
+  name               String
+  email              String
+  passwordHash       String
+  isOwner            Boolean          @default(false)
+  active             Boolean          @default(true)
+  verificationSentAt DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  sessions           Session[]
+  loginChallenges    LoginChallenge[]
+  passwordResets     PasswordReset[]
+  auditLogs          AuditLog[]       @relation("AuditActor")
+  supervisorLinks    SupervisorLink[] @relation("SupervisedUser")
+  supervises         SupervisorLink[] @relation("Supervisor")
+  sentInvitations    Invitation[]     @relation("InvitationInviter")
+
+  @@unique([email])
+  @@unique([id, firmId])
+  @@index([firmId, active])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  firmId      String
+  firm        Firm             @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  name        String
+  isTemplate  Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  users       User[]
+  permissions RolePermission[]
+  invitations Invitation[]
+
+  @@unique([id, firmId])
+  @@unique([firmId, name])
+}
+
+model RolePermission {
+  id     String          @id @default(cuid())
+  firmId String          @map("firm_id")
+  firm   Firm            @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  roleId String
+  role   Role            @relation(fields: [roleId, firmId], references: [id, firmId], onDelete: Cascade)
+  module String
+  level  PermissionLevel @default(None)
+  scope  PermissionScope @default(Own)
+
+  @@unique([roleId, module])
+}
+
+model SupervisorLink {
+  id           String   @id @default(cuid())
+  firmId       String   @map("firm_id")
+  firm         Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation("SupervisedUser", fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  supervisorId String
+  supervisor   User     @relation("Supervisor", fields: [supervisorId, firmId], references: [id, firmId], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([userId])
+  @@index([firmId, supervisorId])
+}
+
+model Invitation {
+  id         String    @id @default(cuid())
+  firmId     String
+  firm       Firm      @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  inviterId  String
+  inviter    User      @relation("InvitationInviter", fields: [inviterId, firmId], references: [id, firmId], onDelete: Cascade)
+  roleId     String
+  role       Role      @relation(fields: [roleId, firmId], references: [id, firmId], onDelete: NoAction)
+  email      String
+  name       String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([firmId, email])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  firmId     String
+  firm       Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId, firmId], references: [id, firmId], onDelete: NoAction)
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([firmId, createdAt])
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  firmId         String   @map("firm_id")
+  firm           Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  tokenHash      String   @unique
+  lastActivityAt DateTime @default(now())
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([firmId, userId, expiresAt])
+}
+
+model LoginChallenge {
+  id        String   @id @default(cuid())
+  firmId    String   @map("firm_id")
+  firm      Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([firmId, userId, expiresAt])
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  firmId    String   @map("firm_id")
+  firm      Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([firmId, userId, expiresAt])
+}
