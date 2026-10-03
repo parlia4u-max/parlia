@@ -4,7 +4,7 @@ import { useState } from "react";
 import { saveSetupDraft } from "@/app/actions/setup";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MODULES, MODULE_LABELS } from "@/lib/permissions";
-import type { SetupSectionKey } from "@/lib/setup-config";
+import { STAGE_KINDS, TASK_CATEGORIES, type SetupSectionKey } from "@/lib/setup-config";
 
 type SetupValue = Record<string, any>;
 type Supervisor = { id: string; name: string; email: string };
@@ -74,6 +74,9 @@ export function SetupSectionEditor({
     setField(key, rows);
   };
   const removeRow = (key: string, index: number) => setField(key, list(Array.isArray(value) ? value : value[key]).filter((_, itemIndex) => itemIndex !== index));
+  const normalizedStages = (stages: unknown) => list(stages).map((stage) => typeof stage === "string"
+    ? { name: stage, kind: stage.toLowerCase() === "closed" ? "C" : "A", tasks: [] }
+    : { ...stage, tasks: list(stage.tasks) });
 
   let fields;
   switch (section) {
@@ -146,17 +149,62 @@ export function SetupSectionEditor({
               </div>
               <div className="setup-nested-list">
                 <h4>{nested === "stages" ? "Stages" : nested === "categories" ? "Categories" : "Template sections"}</h4>
-                {list(row[nested]).map((entry, childIndex) => (
-                  <div className="setup-edit-row" key={`${nested}-${childIndex}`}>
-                    <TextField label={`${nested.slice(0, -1)} ${childIndex + 1}`} value={entry} maxLength={120} onChange={(next) => {
-                      const children = [...list(row[nested])];
-                      children[childIndex] = next;
-                      updateRow(key, index, { ...row, [nested]: children });
-                    }} />
-                    <RemoveButton label={`Remove ${nested.slice(0, -1)} ${childIndex + 1}`} onClick={() => updateRow(key, index, { ...row, [nested]: list(row[nested]).filter((_, child) => child !== childIndex) })} />
+                {(isMatter ? normalizedStages(row[nested]) : list(row[nested])).map((entry, childIndex) => (
+                  <div className="setup-edit-card" key={`${nested}-${childIndex}`}>
+                    <div className="setup-edit-row">
+                      <TextField label={`${nested.slice(0, -1)} ${childIndex + 1}`} value={isMatter ? entry.name : entry} maxLength={120} onChange={(next) => {
+                        const children = isMatter ? normalizedStages(row[nested]) : [...list(row[nested])];
+                        children[childIndex] = isMatter ? { ...entry, name: next } : next;
+                        updateRow(key, index, { ...row, [nested]: children });
+                      }} />
+                      {isMatter ? <label className="foundation-field"><span>Stage kind</span><select value={entry.kind} onChange={(event) => {
+                        const children = normalizedStages(row[nested]);
+                        children[childIndex] = { ...entry, kind: event.target.value };
+                        updateRow(key, index, { ...row, [nested]: children });
+                      }}>{STAGE_KINDS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}</select></label> : null}
+                      <RemoveButton label={`Remove ${nested.slice(0, -1)} ${childIndex + 1}`} onClick={() => updateRow(key, index, { ...row, [nested]: (isMatter ? normalizedStages(row[nested]) : list(row[nested])).filter((_, child) => child !== childIndex) })} />
+                    </div>
+                    {isMatter ? <div className="setup-nested-list">
+                      <h5>Tasks created when this stage begins</h5>
+                      {list(entry.tasks).map((task, taskIndex) => (
+                        <div className="setup-edit-row" key={`stage-task-${taskIndex}`}>
+                          <TextField label="Task title" value={task.title} maxLength={160} onChange={(next) => {
+                            const children = normalizedStages(row[nested]);
+                            const tasks = [...list(entry.tasks)];
+                            tasks[taskIndex] = { ...task, title: next };
+                            children[childIndex] = { ...entry, tasks };
+                            updateRow(key, index, { ...row, [nested]: children });
+                          }} />
+                          <label className="foundation-field"><span>Category</span><select value={task.category} onChange={(event) => {
+                            const children = normalizedStages(row[nested]);
+                            const tasks = [...list(entry.tasks)];
+                            tasks[taskIndex] = { ...task, category: event.target.value };
+                            children[childIndex] = { ...entry, tasks };
+                            updateRow(key, index, { ...row, [nested]: children });
+                          }}>{TASK_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label>
+                          <label className="foundation-field"><span>Due in days (optional)</span><input aria-label="Task due in days (optional)" type="number" min={0} max={3650} value={task.dueInDays ?? ""} onChange={(event) => {
+                            const children = normalizedStages(row[nested]);
+                            const tasks = [...list(entry.tasks)];
+                            tasks[taskIndex] = { ...task, dueInDays: event.target.value === "" ? undefined : Number(event.target.value) };
+                            children[childIndex] = { ...entry, tasks };
+                            updateRow(key, index, { ...row, [nested]: children });
+                          }} /></label>
+                          <RemoveButton label={`Remove stage task ${taskIndex + 1}`} onClick={() => {
+                            const children = normalizedStages(row[nested]);
+                            children[childIndex] = { ...entry, tasks: list(entry.tasks).filter((_, child) => child !== taskIndex) };
+                            updateRow(key, index, { ...row, [nested]: children });
+                          }} />
+                        </div>
+                      ))}
+                      <button className="button-secondary" onClick={() => {
+                        const children = normalizedStages(row[nested]);
+                        children[childIndex] = { ...entry, tasks: [...list(entry.tasks), { title: "", category: "Drafting" }] };
+                        updateRow(key, index, { ...row, [nested]: children });
+                      }} type="button">Add stage task</button>
+                    </div> : null}
                   </div>
                 ))}
-                <button className="button-secondary" onClick={() => updateRow(key, index, { ...row, [nested]: [...list(row[nested]), ""] })} type="button">Add {nested.slice(0, -1)}</button>
+                <button className="button-secondary" onClick={() => updateRow(key, index, { ...row, [nested]: isMatter ? [...normalizedStages(row[nested]), { name: "", kind: "A", tasks: [] }] : [...list(row[nested]), ""] })} type="button">Add {nested.slice(0, -1)}</button>
               </div>
             </fieldset>
           ))}

@@ -6,6 +6,7 @@ import { audit, requireOwner } from "@/lib/auth";
 import { appUrl, sendEmail } from "@/lib/email";
 import { getDb } from "@/lib/db";
 import { hashToken, normalizeEmail, randomToken, required, validEmail } from "@/lib/security";
+import { canInviteStaff } from "@/lib/staff-seats";
 
 export async function inviteStaff(_state: string | null, formData: FormData): Promise<string | null> {
   let destination = "/staff?invited=1";
@@ -26,16 +27,33 @@ export async function inviteStaff(_state: string | null, formData: FormData): Pr
     });
     if (pending) throw new ActionError("An active invitation has already been sent to that email.");
     const token = randomToken();
-    const invite = await db.invitation.create({
-      data: {
-        firmId: owner.firmId,
-        inviterId: owner.id,
-        roleId,
-        name,
-        email,
-        tokenHash: hashToken(token),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
+    const invite = await db.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "Firm" WHERE "id" = ${owner.firmId} FOR UPDATE`;
+      const firm = await tx.firm.findFirst({ where: { id: owner.firmId }, select: { staffSeatLimit: true } });
+      if (!firm) throw new ActionError("This firm account is no longer available.");
+      const now = new Date();
+      const currentInvitation = await tx.invitation.findFirst({
+        where: { firmId: owner.firmId, email, acceptedAt: null, expiresAt: { gt: now } },
+      });
+      if (currentInvitation) throw new ActionError("An active invitation has already been sent to that email.");
+      const [activeStaff, pendingInvitations] = await Promise.all([
+        tx.user.count({ where: { firmId: owner.firmId, active: true, isOwner: false } }),
+        tx.invitation.count({ where: { firmId: owner.firmId, acceptedAt: null, expiresAt: { gt: now } } }),
+      ]);
+      if (!canInviteStaff(activeStaff, pendingInvitations, firm.staffSeatLimit)) {
+        throw new ActionError("Your firm has reached its staff seat allowance. Review the firm’s subscription options before inviting another staff member.");
+      }
+      return tx.invitation.create({
+        data: {
+          firmId: owner.firmId,
+          inviterId: owner.id,
+          roleId,
+          name,
+          email,
+          tokenHash: hashToken(token),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
     });
     inviteId = invite.id;
     try {

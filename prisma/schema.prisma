@@ -20,6 +20,24 @@ enum PermissionScope {
   Firm
 }
 
+enum MatterStatus {
+  Active
+  OnHold
+  Closed
+}
+
+enum TaskStatus {
+  Open
+  Complete
+}
+
+enum MatterStageKind {
+  A
+  W
+  C
+  X
+}
+
 model Firm {
   id              String           @id @default(cuid())
   name            String
@@ -35,6 +53,12 @@ model Firm {
   loginChallenges LoginChallenge[]
   passwordResets  PasswordReset[]
   setupConfiguration SetupConfiguration?
+  matters         Matter[]
+  tasks           Task[]
+  matterNotes     MatterNote[]
+  matterActivities MatterActivity[]
+  documentReferences DocumentReference[]
+  taskNudges      TaskNudge[]
 }
 
 model SetupConfiguration {
@@ -70,6 +94,16 @@ model User {
   supervisorLinks    SupervisorLink[] @relation("SupervisedUser")
   supervises         SupervisorLink[] @relation("Supervisor")
   sentInvitations    Invitation[]     @relation("InvitationInviter")
+  responsibleMatters Matter[]         @relation("MatterResponsible")
+  createdMatters     Matter[]          @relation("MatterCreator")
+  assignedTasks      Task[]            @relation("TaskAssignee")
+  createdTasks       Task[]            @relation("TaskCreator")
+  completedTasks     Task[]            @relation("TaskCompleter")
+  matterNotes        MatterNote[]
+  matterActivities   MatterActivity[]
+  documentReferences DocumentReference[]
+  sentTaskNudges     TaskNudge[]       @relation("TaskNudgeSender")
+  receivedTaskNudges TaskNudge[]       @relation("TaskNudgeRecipient")
 
   @@unique([email])
   @@unique([id, firmId])
@@ -190,4 +224,127 @@ model PasswordReset {
   createdAt DateTime @default(now())
 
   @@index([firmId, userId, expiresAt])
+}
+
+model Matter {
+  id                String       @id @default(cuid())
+  firmId            String
+  firm              Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterNumber      String
+  clientName        String
+  clientSurname     String
+  clientEmail       String?
+  matterType        String
+  stage             String
+  stageKind         MatterStageKind @default(A)
+  responsibleId     String
+  responsible       User         @relation("MatterResponsible", fields: [responsibleId, firmId], references: [id, firmId], onDelete: Restrict)
+  createdById       String
+  createdBy         User         @relation("MatterCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  clientNumber      String?
+  otherReferences   String?
+  caseNumber        String?
+  status            MatterStatus @default(Active)
+  onHoldReason      String?
+  reviewDate        DateTime?
+  lastActivityAt    DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  tasks             Task[]
+  notes             MatterNote[]
+  activities        MatterActivity[]
+  documentReferences DocumentReference[]
+
+  @@unique([id, firmId])
+  @@unique([firmId, matterNumber])
+  @@index([firmId, status, lastActivityAt])
+  @@index([firmId, responsibleId, status])
+  @@index([firmId, matterType, stage])
+}
+
+model Task {
+  id              String     @id @default(cuid())
+  firmId          String
+  firm            Firm       @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId        String?
+  matter          Matter?    @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  title           String
+  category        String
+  stage           String?
+  assignedToId    String
+  assignedTo      User       @relation("TaskAssignee", fields: [assignedToId, firmId], references: [id, firmId], onDelete: Restrict)
+  createdById     String
+  createdBy       User       @relation("TaskCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  dueAt           DateTime?
+  status          TaskStatus @default(Open)
+  completedAt     DateTime?
+  completedById   String?
+  completedBy     User?      @relation("TaskCompleter", fields: [completedById, firmId], references: [id, firmId], onDelete: NoAction)
+  nudges          TaskNudge[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, assignedToId, status, dueAt])
+  @@index([firmId, matterId, status, dueAt])
+}
+
+model MatterNote {
+  id        String   @id @default(cuid())
+  firmId    String
+  firm      Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId  String
+  matter    Matter   @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId, firmId], references: [id, firmId], onDelete: Restrict)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([firmId, matterId, createdAt])
+}
+
+model MatterActivity {
+  id        String   @id @default(cuid())
+  firmId    String
+  firm      Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId  String
+  matter    Matter   @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  actorId   String?
+  actor     User?    @relation(fields: [actorId, firmId], references: [id, firmId], onDelete: NoAction)
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([firmId, matterId, createdAt])
+}
+
+model DocumentReference {
+  id          String   @id @default(cuid())
+  firmId      String
+  firm        Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId    String
+  matter      Matter   @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  createdById String
+  createdBy   User     @relation(fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  label       String
+  reference   String
+  createdAt   DateTime @default(now())
+
+  @@index([firmId, matterId, createdAt])
+}
+
+model TaskNudge {
+  id          String   @id @default(cuid())
+  firmId      String
+  firm        Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  taskId      String
+  task        Task     @relation(fields: [taskId, firmId], references: [id, firmId], onDelete: Cascade)
+  senderId    String
+  sender      User     @relation("TaskNudgeSender", fields: [senderId, firmId], references: [id, firmId], onDelete: Cascade)
+  recipientId String
+  recipient   User     @relation("TaskNudgeRecipient", fields: [recipientId, firmId], references: [id, firmId], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([firmId, recipientId, createdAt])
+  @@index([firmId, taskId, createdAt])
 }

@@ -106,6 +106,33 @@ export async function publishSetup(_state: string | null, _formData: FormData): 
       if (!config) throw new ActionError("Setup is not available for this firm.");
       const draft = config.draft as Record<string, unknown>;
       for (const section of SETUP_SECTIONS) validateSetupValue(section.key, draft[section.key]);
+      const activeCategories = new Set((draft.taskTypes as { categories: string[] }[])
+        .flatMap((taskType) => taskType.categories));
+      const configuredMatterTypes = draft.matterTypes as { name: string; stages: ({ name: string; kind: string; tasks?: { title: string; category: string }[] } | string)[] }[];
+      for (const type of configuredMatterTypes) {
+        for (const configuredStage of type.stages) {
+          if (typeof configuredStage === "string") continue;
+          for (const task of configuredStage.tasks ?? []) {
+            if (!activeCategories.has(task.category)) {
+              throw new ActionError(`The configured task “${task.title}” in ${type.name} / ${configuredStage.name} uses a category that is not active.`);
+            }
+          }
+          if (configuredStage.kind === "W" && !activeCategories.has("Follow up")) {
+            throw new ActionError(`Add the Follow up task category before publishing the waiting stage ${type.name} / ${configuredStage.name}.`);
+          }
+        }
+      }
+      const activeMatterReferences = await tx.matter.findMany({
+        where: { firmId: user.firmId, status: { not: "Closed" } },
+        select: { matterType: true, stage: true },
+      });
+      for (const matter of activeMatterReferences) {
+        const type = configuredMatterTypes.find((candidate) => candidate.name === matter.matterType);
+        const stages = type?.stages.map((stage) => typeof stage === "string" ? stage : stage.name) ?? [];
+        if (!stages.includes(matter.stage)) {
+          throw new ActionError(`Cannot remove or rename ${matter.matterType} / ${matter.stage} while an open matter still uses it.`);
+        }
+      }
       const profile = draft.firmProfile as { name: string };
       const permissionConfig = draft.permissions as { roles: { name: string; permissions: Record<string, { level: string; scope: string }> }[] };
       const setupRights = draft.setupRights as { supervisors: { userId: string }[] };

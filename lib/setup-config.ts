@@ -20,6 +20,8 @@ export const SETUP_SECTIONS = [
 
 export type SetupSectionKey = (typeof SETUP_SECTIONS)[number]["key"];
 export type SetupConfig = Record<SetupSectionKey, unknown>;
+export const TASK_CATEGORIES = ["Drafting", "Court runs", "Tasks", "Follow up", "Updates internal", "Updates external"] as const;
+export const STAGE_KINDS = ["A", "W", "C", "X"] as const;
 
 const southAfricanHolidays2026 = [
   { date: "2026-01-01", name: "New Year's Day" },
@@ -48,13 +50,10 @@ export function createInitialSetupConfig(firmName: string): SetupConfig {
       courtRecesses: [],
     },
     matterTypes: [
-      { name: "Litigation", stages: ["Instruction", "Pleadings", "Discovery", "Trial", "Closed"] },
-      { name: "Conveyancing", stages: ["Instruction", "Transfer", "Registration", "Closed"] },
+      { name: "Litigation", stages: [{ name: "Instruction", kind: "A", tasks: [] }, { name: "Pleadings", kind: "A", tasks: [] }, { name: "Discovery", kind: "A", tasks: [] }, { name: "Trial", kind: "A", tasks: [] }, { name: "Closed", kind: "C", tasks: [] }] },
+      { name: "Conveyancing", stages: [{ name: "Instruction", kind: "A", tasks: [] }, { name: "Transfer", kind: "A", tasks: [] }, { name: "Registration", kind: "A", tasks: [] }, { name: "Closed", kind: "C", tasks: [] }] },
     ],
-    taskTypes: [
-      { name: "Legal work", categories: ["Drafting", "Research", "Review"] },
-      { name: "Administration", categories: ["Filing", "Client follow-up"] },
-    ],
+    taskTypes: [{ name: "Work", categories: [...TASK_CATEGORIES] }],
     urgencyBands: [
       { name: "Routine", days: 14, colour: "#bfd3c1" },
       { name: "Soon", days: 7, colour: "#f1d794" },
@@ -172,8 +171,52 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
       }
       break;
     }
-    case "matterTypes": namedList(value, "Matter types", "stages"); break;
-    case "taskTypes": namedList(value, "Task types", "categories"); break;
+    case "matterTypes": {
+      const matterTypes = array(value, "Matter types");
+      const typeNames: string[] = [];
+      for (const [index, item] of matterTypes.entries()) {
+        const matterType = object(item, `Matter type ${index + 1}`);
+        text(matterType.name, "Matter type name", 120);
+        if (!String(matterType.name).trim()) throw new ActionError("Matter type names cannot be blank.");
+        typeNames.push(String(matterType.name).trim().toLowerCase());
+        const stageNames: string[] = [];
+        for (const [stageIndex, rawStage] of array(matterType.stages, "Matter stages", 100).entries()) {
+          const stage = typeof rawStage === "string" ? { name: rawStage, kind: rawStage.toLowerCase() === "closed" ? "C" : "A", tasks: [] } : object(rawStage, `Stage ${stageIndex + 1}`);
+          text(stage.name, "Stage name", 120);
+          if (!String(stage.name).trim()) throw new ActionError("Matter stage names cannot be blank.");
+          stageNames.push(String(stage.name).trim().toLowerCase());
+          if (!STAGE_KINDS.includes(String(stage.kind) as typeof STAGE_KINDS[number])) throw new ActionError("Matter stages must use the A, W, C or X kind code.");
+          for (const [taskIndex, rawTask] of array(stage.tasks ?? [], "Stage tasks", 100).entries()) {
+            const task = object(rawTask, `Stage task ${taskIndex + 1}`);
+            text(task.title, "Stage task title", 160);
+            text(task.category, "Stage task category", 40);
+            if (!String(task.title).trim()) throw new ActionError("Stage task titles cannot be blank.");
+            if (!TASK_CATEGORIES.includes(String(task.category) as typeof TASK_CATEGORIES[number])) throw new ActionError("Choose a supported task category.");
+            if (task.dueInDays !== undefined) positiveNumber(task.dueInDays, "Stage task due-in days", 3650);
+          }
+        }
+        if (new Set(stageNames).size !== stageNames.length) throw new ActionError(`Matter stages for ${String(matterType.name)} must be unique.`);
+      }
+      if (new Set(typeNames).size !== typeNames.length) throw new ActionError("Matter type names must be unique.");
+      break;
+    }
+    case "taskTypes": {
+      const names: string[] = [];
+      for (const [index, item] of array(value, "Task types").entries()) {
+        const taskType = object(item, `Task type ${index + 1}`);
+        text(taskType.name, "Task type name", 120);
+        if (!String(taskType.name).trim()) throw new ActionError("Task type names cannot be blank.");
+        names.push(String(taskType.name).trim().toLowerCase());
+        const categories = array(taskType.categories, "Task categories", TASK_CATEGORIES.length).map((category) => {
+          text(category, "Task category", 40);
+          if (!TASK_CATEGORIES.includes(String(category) as typeof TASK_CATEGORIES[number])) throw new ActionError("Task categories must use the configured categories: Drafting, Court runs, Tasks, Follow up, Updates internal or Updates external.");
+          return String(category).trim().toLowerCase();
+        });
+        if (new Set(categories).size !== categories.length) throw new ActionError("Task categories must be unique within each task type.");
+      }
+      if (new Set(names).size !== names.length) throw new ActionError("Task type names must be unique.");
+      break;
+    }
     case "minutesTemplates": namedList(value, "Minutes templates", "sections"); break;
     case "urgencyBands": {
       for (const item of array(value, "Urgency bands")) {

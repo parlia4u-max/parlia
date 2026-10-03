@@ -22,6 +22,8 @@ type MenuGroup = {
 export type NavigationAccess = {
   isOwner: boolean;
   canViewPeople: boolean;
+  canViewMatters: boolean;
+  canViewTasks: boolean;
   setupHrefs: string[];
 };
 
@@ -36,6 +38,15 @@ const menuGroups: MenuGroup[] = [
     label: "PEOPLE",
     items: [
       { label: "Staff", href: "/staff", icon: "people" },
+      { label: "Help Center", href: "/help", icon: "messages" },
+    ],
+  },
+  {
+    label: "WORK",
+    items: [
+      { label: "Matters", href: "/matters", icon: "matter" },
+      { label: "Stages board", href: "/matters/board", icon: "filing" },
+      { label: "My to-do", href: "/tasks", icon: "tasks" },
     ],
   },
   {
@@ -121,6 +132,7 @@ function MenuIcon({ name }: { name: string }) {
 }
 
 function isActive(pathname: string, href: string) {
+  if (href === "/matters") return pathname === href || pathname.startsWith("/matters/") && !pathname.startsWith("/matters/board");
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -141,6 +153,8 @@ export function AppShell({ children, navigationAccess }: { children: React.React
       ...group,
       items: group.items.filter((item) => {
         if (item.href === "/staff") return navigationAccess.canViewPeople;
+        if (item.href === "/matters" || item.href === "/matters/board") return navigationAccess.canViewMatters;
+        if (item.href === "/tasks") return navigationAccess.canViewTasks;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||
           item.href === "/settings/permissions" || item.href === "/settings/integrations" ||

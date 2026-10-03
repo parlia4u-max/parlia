@@ -39,3 +39,20 @@ test("setup list validation rejects impossible dates and duplicate role names", 
     roles: [permissions.roles[0], { ...permissions.roles[0], name: "  lawyer " }],
   }), /unique/);
 });
+
+test("matter stages preserve A/W/C/X kinds and validate configured stage tasks", () => {
+  const config = createInitialSetupConfig("Example firm");
+  const matterTypes = structuredClone(config.matterTypes) as { name: string; stages: { name: string; kind: string; tasks: { title: string; category: string; dueInDays?: number }[] }[] }[];
+  matterTypes[0].stages[0] = {
+    name: "Awaiting response",
+    kind: "W",
+    tasks: [{ title: "Follow up", category: "Follow up", dueInDays: 0 }],
+  };
+  assert.doesNotThrow(() => validateSetupValue("matterTypes", matterTypes));
+  assert.throws(() => validateSetupValue("matterTypes", [{ name: "Test", stages: [{ name: "Broken", kind: "Waiting", tasks: [] }] }]), /A, W, C or X/);
+  assert.throws(() => validateSetupValue("matterTypes", [{ name: "Test", stages: [{ name: "Broken", kind: "A", tasks: [{ title: "Task", category: "Research" }] }] }]), /supported task category/);
+});
+
+test("task setup contains only the six supported Module C categories", () => {
+  assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["Research"] }]), /configured categories/);
+});
