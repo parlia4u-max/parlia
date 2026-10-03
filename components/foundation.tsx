@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export function FoundationHeader({ title, firm, isOwner = false }: { title: string; firm: string; isOwner?: boolean }) {
+export function FoundationHeader({ title, firm, isOwner = false, canViewPeople = isOwner }: { title: string; firm: string; isOwner?: boolean; canViewPeople?: boolean }) {
   return (
     <header className="foundation-header">
       <div>
@@ -9,7 +9,7 @@ export function FoundationHeader({ title, firm, isOwner = false }: { title: stri
         <h1>{title}</h1>
       </div>
       <nav className="foundation-nav" aria-label="Foundation">
-        <Link href="/staff">Staff</Link>
+        {canViewPeople ? <Link href="/staff">Staff</Link> : null}
         {isOwner ? <Link href="/settings/permissions">Permissions</Link> : null}
         {isOwner ? <Link href="/settings/audit-log">Audit log</Link> : null}
       </nav>

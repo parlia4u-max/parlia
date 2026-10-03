@@ -5,7 +5,6 @@ import { ActionError, actionErrorMessage } from "@/lib/errors";
 import { audit, requireOwner } from "@/lib/auth";
 import { appUrl, sendEmail } from "@/lib/email";
 import { getDb } from "@/lib/db";
-import { MODULES, type ModuleKey, type PermissionLevel, type PermissionScope } from "@/lib/permissions";
 import { hashToken, normalizeEmail, randomToken, required, validEmail } from "@/lib/security";
 
 export async function inviteStaff(_state: string | null, formData: FormData): Promise<string | null> {
@@ -138,59 +137,4 @@ export async function toggleStaff(_state: string | null, formData: FormData): Pr
     return actionErrorMessage(error);
   }
   redirect("/staff");
-}
-
-export async function saveRole(_state: string | null, formData: FormData): Promise<string | null> {
-  const owner = await requireOwner();
-  try {
-    const name = required(formData.get("name"), "Role name");
-    if (name.length > 80) throw new ActionError("Role names must be 80 characters or fewer.");
-    if (name.toLowerCase() === "owner") throw new ActionError("Owner is a reserved role name.");
-    const roleId = formData.get("roleId");
-    const db = getDb();
-    if (roleId) {
-      const role = await db.role.findFirst({ where: { id: String(roleId), firmId: owner.firmId, name: { not: "Owner" } } });
-      if (!role) throw new ActionError("Role not found.");
-      await db.role.update({ where: { id: role.id }, data: { name } });
-      await audit(owner.firmId, owner.id, "role.renamed", "role", role.id, { name });
-    } else {
-      const role = await db.role.create({ data: { firmId: owner.firmId, name, isTemplate: false } });
-      await db.rolePermission.createMany({
-        data: MODULES.map((module) => ({ roleId: role.id, firmId: owner.firmId, module, level: "None", scope: "Own" })),
-      });
-      await audit(owner.firmId, owner.id, "role.created", "role", role.id, { name });
-    }
-  } catch (error) {
-    return actionErrorMessage(error);
-  }
-  redirect("/settings/permissions");
-}
-
-export async function savePermission(_state: string | null, formData: FormData): Promise<string | null> {
-  const owner = await requireOwner();
-  try {
-    const roleId = required(formData.get("roleId"), "Role");
-    const moduleValue = required(formData.get("module"), "Module");
-    const levelValue = required(formData.get("level"), "Permission level");
-    const scopeValue = required(formData.get("scope"), "Permission scope");
-    if (!MODULES.includes(moduleValue as ModuleKey)) throw new ActionError("Invalid module.");
-    if (!["None", "View", "Edit"].includes(levelValue) || !["Own", "Team", "Firm"].includes(scopeValue)) {
-      throw new ActionError("Invalid permission level or scope.");
-    }
-    const module = moduleValue as ModuleKey;
-    const level = levelValue as PermissionLevel;
-    const scope = scopeValue as PermissionScope;
-    const db = getDb();
-    const role = await db.role.findFirst({ where: { id: roleId, firmId: owner.firmId, name: { not: "Owner" } } });
-    if (!role) throw new ActionError("Role not found.");
-    await db.rolePermission.upsert({
-      where: { roleId_module: { roleId, module } },
-      create: { roleId, firmId: owner.firmId, module, level, scope },
-      update: { firmId: owner.firmId, level, scope },
-    });
-    await audit(owner.firmId, owner.id, "permission.updated", "role", roleId, { module, level, scope });
-  } catch (error) {
-    return actionErrorMessage(error);
-  }
-  redirect("/settings/permissions");
 }

@@ -6,6 +6,7 @@ import { audit, createSession, signOut } from "@/lib/auth";
 import { appUrl, requireEmailConfiguration, sendEmail } from "@/lib/email";
 import { getDb } from "@/lib/db";
 import { MODULES } from "@/lib/permissions";
+import { createInitialSetupConfig } from "@/lib/setup-config";
 import { hashPassword, hashToken, hashVerificationCode, normalizeEmail, randomToken, randomVerificationCode, required, requiredSecret, validEmail, verifyPassword } from "@/lib/security";
 
 const templates = [
@@ -73,6 +74,10 @@ export async function createOwner(_state: string | null, formData: FormData): Pr
     const codeHash = hashVerificationCode(code);
     await db.$transaction(async (tx) => {
       const firm = await tx.firm.create({ data: { name: firmName } });
+      const setupDefaults = createInitialSetupConfig(firmName);
+      await tx.setupConfiguration.create({
+        data: { firmId: firm.id, draft: setupDefaults as never, published: setupDefaults as never },
+      });
       const ownerRole = await tx.role.create({ data: { firmId: firm.id, name: "Owner", isTemplate: true } });
       const user = await tx.user.create({
         data: {

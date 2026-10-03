@@ -23,6 +23,7 @@ enum PermissionScope {
 model Firm {
   id              String           @id @default(cuid())
   name            String
+  staffSeatLimit  Int?
   createdAt       DateTime         @default(now())
   users           User[]
   roles           Role[]
@@ -33,6 +34,19 @@ model Firm {
   sessions        Session[]
   loginChallenges LoginChallenge[]
   passwordResets  PasswordReset[]
+  setupConfiguration SetupConfiguration?
+}
+
+model SetupConfiguration {
+  id          String   @id @default(cuid())
+  firmId      String   @unique
+  firm        Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  draft       Json
+  published   Json
+  version     Int      @default(0)
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model User {

@@ -10,6 +10,7 @@ type MenuItem = {
   label: string;
   href: string;
   icon: string;
+  desktopOnly?: boolean;
 };
 
 type MenuGroup = {
@@ -18,74 +19,43 @@ type MenuGroup = {
   collapsible?: boolean;
 };
 
+export type NavigationAccess = {
+  isOwner: boolean;
+  canViewPeople: boolean;
+  setupHrefs: string[];
+};
+
 const menuGroups: MenuGroup[] = [
   {
     label: "MY DAY",
     items: [
       { label: "Dashboard", href: "/", icon: "home" },
-      { label: "My to-do", href: "/my-to-do", icon: "tasks" },
-    ],
-  },
-  {
-    label: "MATTERS",
-    items: [
-      { label: "Matter list", href: "/matters", icon: "matter" },
-      { label: "Stages board", href: "/stages-board", icon: "tasks" },
-      { label: "Physical filing", href: "/physical-filing", icon: "filing" },
-      { label: "Service & enforcement", href: "/service-enforcement", icon: "service" },
-      { label: "Tracing", href: "/tracing", icon: "tracing" },
-    ],
-  },
-  {
-    label: "CALENDAR",
-    collapsible: false,
-    items: [
-      { label: "Calendar", href: "/calendar", icon: "calendar" },
-    ],
-  },
-  {
-    label: "TEAM",
-    items: [
-      { label: "Messages", href: "/messages", icon: "messages" },
-      { label: "Meetings & minutes", href: "/meetings", icon: "meetings" },
-      { label: "Leave", href: "/leave", icon: "leave" },
-      { label: "Suggestions", href: "/suggestions", icon: "suggestions" },
-      { label: "Employee of the month", href: "/employee-of-the-month", icon: "people" },
     ],
   },
   {
     label: "PEOPLE",
     items: [
       { label: "Staff", href: "/staff", icon: "people" },
-      { label: "Clock-in sheets", href: "/clock-in-sheets", icon: "clock" },
-      { label: "HR documents", href: "/hr-documents", icon: "filing" },
-      { label: "Equipment", href: "/equipment", icon: "equipment" },
-      { label: "Important passwords", href: "/important-passwords", icon: "passwords" },
-      { label: "Locations", href: "/locations", icon: "locations" },
-    ],
-  },
-  {
-    label: "REPORTS",
-    items: [
-      { label: "Workload and urgency", href: "/reports/workload-and-urgency", icon: "reports" },
-      { label: "Matters by stage", href: "/reports/matters-by-stage", icon: "matter" },
-      { label: "Leave", href: "/reports/leave", icon: "leave" },
-      { label: "Attendance", href: "/reports/attendance", icon: "clock" },
-      { label: "Equipment", href: "/reports/equipment", icon: "equipment" },
-      { label: "Closed files", href: "/reports/closed-files", icon: "filing" },
-      { label: "Export / download", href: "/reports/export", icon: "download" },
     ],
   },
   {
     label: "SETTINGS",
     items: [
+      { label: "Setup Centre", href: "/setup", icon: "setup", desktopOnly: true },
       { label: "Firm profile and branding", href: "/settings/firm-profile", icon: "setup" },
       { label: "Country & holidays", href: "/settings/country-holidays", icon: "calendar" },
       { label: "Matter types & stages", href: "/settings/matter-types-stages", icon: "matter" },
       { label: "Task types & categories", href: "/settings/task-types-categories", icon: "tasks" },
       { label: "Urgency bands", href: "/settings/urgency-bands", icon: "clock" },
       { label: "Follow-up and tracing rules", href: "/settings/follow-up-tracing", icon: "tracing" },
+      { label: "Calendar visibility", href: "/settings/calendar-visibility", icon: "calendar" },
+      { label: "Leave rules and forms", href: "/settings/leave-rules", icon: "leave" },
+      { label: "Minutes templates", href: "/settings/minutes-templates", icon: "meetings" },
+      { label: "HR checklist and onboarding", href: "/settings/hr-checklist", icon: "people" },
+      { label: "Filing structure", href: "/settings/filing-structure", icon: "filing" },
+      { label: "Integrations", href: "/settings/integrations", icon: "setup" },
       { label: "Permissions and role templates", href: "/settings/permissions", icon: "people" },
+      { label: "Supervisor setup rights", href: "/settings/supervisor-setup-rights", icon: "people" },
       { label: "Audit log", href: "/settings/audit-log", icon: "reports" },
       { label: "Subscription & team size", href: "/settings/subscription", icon: "setup" },
     ],
@@ -95,10 +65,8 @@ const menuGroups: MenuGroup[] = [
 const allItems = menuGroups.flatMap((group) => group.items);
 const mobileItems = [
   allItems.find((item) => item.href === "/"),
-  allItems.find((item) => item.href === "/my-to-do"),
-  allItems.find((item) => item.href === "/calendar"),
-  allItems.find((item) => item.href === "/matters"),
-].filter((item): item is MenuItem => item !== undefined);
+  allItems.find((item) => item.href === "/staff"),
+].filter((item): item is MenuItem => item !== undefined && !item.desktopOnly);
 const mobileShortcutHrefs = new Set(mobileItems.map((item) => item.href));
 
 function ParliaLogo() {
@@ -162,12 +130,28 @@ function getActiveGroup(pathname: string) {
   )?.label ?? "MY DAY";
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, navigationAccess }: { children: React.ReactNode; navigationAccess: NavigationAccess }) {
   const pathname = usePathname();
   const [textSize, setTextSize] = useState("normal");
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState(() => getActiveGroup(pathname));
+  const visibleMenuGroups = menuGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (item.href === "/staff") return navigationAccess.canViewPeople;
+        if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
+        if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||
+          item.href === "/settings/permissions" || item.href === "/settings/integrations" ||
+          item.href === "/settings/supervisor-setup-rights") return navigationAccess.isOwner;
+        if (item.href.startsWith("/settings/")) return navigationAccess.isOwner || navigationAccess.setupHrefs.includes(item.href);
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+  const visibleMobileItems = visibleMenuGroups.flatMap((group) => group.items)
+    .filter((item) => mobileShortcutHrefs.has(item.href));
 
   useEffect(() => {
     const savedSize = window.localStorage.getItem("parlia-text-size");
@@ -222,7 +206,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ParliaLogo />
         </Link>
         <nav className="sidebar-nav">
-          {menuGroups.map((group) => group.collapsible === false ? (
+          {visibleMenuGroups.map((group) => group.collapsible === false ? (
             <div className="nav-group nav-group-single" key={group.label}>
               {group.items.map((item) => renderLink(item))}
             </div>
@@ -277,7 +261,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav className="mobile-bar" aria-label="Mobile navigation">
-        {mobileItems.map((item) => renderLink(item, true))}
+        {visibleMobileItems.map((item) => renderLink(item, true))}
         <button
           aria-expanded={mobileMenuOpen}
           aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
@@ -291,8 +275,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
       {mobileMenuOpen && (
         <div className="mobile-menu-panel">
-          {menuGroups.map((group) => {
-            const items = group.items.filter((item) => !mobileShortcutHrefs.has(item.href));
+          {visibleMenuGroups.map((group) => {
+            const items = group.items.filter((item) => !mobileShortcutHrefs.has(item.href) && !item.desktopOnly);
             if (items.length === 0) {
               return null;
             }
