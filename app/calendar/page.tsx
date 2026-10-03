@@ -13,7 +13,7 @@ type CalendarRecord = {
   title: string;
   startAt: Date;
   endAt: Date;
-  kind: "manual" | "task";
+  kind: "manual" | "task" | "duty";
   audience: "Internal" | "Client";
   responsible: string;
   ownerId: string;
@@ -93,13 +93,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const view = validCalendarView(query.view);
   const range = calendarRange(date, view);
   const requestedTypes = query.types === undefined ? [] : Array.isArray(query.types) ? query.types : [query.types];
-  const activeTypes = (query.filtered ? requestedTypes : ["manual", "tasks"])
-    .filter((type) => (type === "manual" || type === "tasks") && (type !== "tasks" || canViewTasks));
+  const activeTypes = (query.filtered ? requestedTypes : ["manual", "tasks", "duties"])
+    .filter((type) => (type === "manual" || type === "tasks" || type === "duties") &&
+      (type !== "tasks" || canViewTasks) && (type !== "duties" || canViewMatters || canViewTasks));
   const requestedAudiences = query.audience === undefined ? [] : Array.isArray(query.audience) ? query.audience : [query.audience];
   const activeAudiences = query.audienceFiltered
     ? requestedAudiences.filter((audience) => audience === "Internal" || audience === "Client")
     : ["Internal", "Client"];
-  const [manualEvents, tasks, matters] = await Promise.all([
+  const [manualEvents, tasks, matters, dutyMatterIds] = await Promise.all([
     activeTypes.includes("manual") ? db.calendarEvent.findMany({
       where: {
         firmId: user.firmId,
@@ -137,7 +138,29 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       orderBy: { matterNumber: "asc" },
       take: 500,
     }) : [],
+    canViewMatters ? db.matter.findMany({
+      where: { firmId: user.firmId, ...(matterScope === "Own" ? { responsibleId: user.id } : matterScope === "Team" ? { responsibleId: { in: [user.id, ...matterReports.map((item) => item.userId)] } } : {}) },
+      select: { id: true },
+    }) : [],
   ]);
+  const duties = activeTypes.includes("duties") ? await db.dutyRecord.findMany({
+    where: {
+      firmId: user.firmId,
+      status: "Scheduled",
+      dueAt: { gte: range.start, lt: range.end },
+      assignedToId: { in: ownerIds },
+      OR: [
+        ...(dutyMatterIds.length ? [{ matterId: { in: dutyMatterIds.map((matter) => matter.id) } }] : []),
+        ...(canViewTasks ? [{ matterId: null, assignedToId: { in: taskOwnerIds } }] : []),
+      ],
+    },
+    select: {
+      id: true, title: true, method: true, dueAt: true, assignedToId: true,
+      assignedTo: { select: { name: true } },
+      matter: { select: { id: true, matterNumber: true } },
+    },
+    orderBy: { dueAt: "asc" }, take: 500,
+  }) : [];
   const matterById = new Map(matters.map((matter) => [matter.id, matter]));
   const events: CalendarRecord[] = [
     ...manualEvents.map((event) => ({
@@ -156,7 +179,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       checklist: [], documents: [], createdById: "",
       attendees: [],
     })),
-  ].filter((event) => event.kind === "task" ? activeAudiences.includes("Internal") : activeAudiences.includes(event.audience))
+    ...duties.map((duty) => ({
+      id: `duty-${duty.id}`, title: duty.title, startAt: duty.dueAt!, endAt: duty.dueAt!,
+      kind: "duty" as const, audience: "Internal" as const, responsible: duty.assignedTo.name, ownerId: duty.assignedToId,
+      matterId: duty.matter && matterById.has(duty.matter.id) ? duty.matter.id : null,
+      matterNumber: duty.matter ? matterById.get(duty.matter.id)?.matterNumber ?? null : null,
+      meetingUrl: null, description: `Duty method: ${duty.method}`, checklist: [], documents: [], createdById: "", attendees: [],
+    })),
+  ].filter((event) => event.kind === "task" || event.kind === "duty" ? activeAudiences.includes("Internal") : activeAudiences.includes(event.audience))
     .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
   const calendarDays: Date[] = [];
   if (view === "month") {
@@ -226,6 +256,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               <input type="hidden" name="audienceFiltered" value="1" />
               <label className="calendar-filter"><input type="checkbox" name="types" value="manual" defaultChecked={activeTypes.includes("manual")} /> Meetings and events</label>
               {canViewTasks ? <label className="calendar-filter"><input type="checkbox" name="types" value="tasks" defaultChecked={activeTypes.includes("tasks")} /> Task due dates</label> : null}
+              {canViewMatters || canViewTasks ? <label className="calendar-filter"><input type="checkbox" name="types" value="duties" defaultChecked={activeTypes.includes("duties")} /> Scheduled duty dates</label> : null}
               <label className="calendar-filter"><input type="checkbox" name="audience" value="Internal" defaultChecked={activeAudiences.includes("Internal")} /> Internal events</label>
               <label className="calendar-filter"><input type="checkbox" name="audience" value="Client" defaultChecked={activeAudiences.includes("Client")} /> Client-facing events</label>
               <button className="button-secondary" type="submit">Apply filters</button>
@@ -266,11 +297,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 <ul>
                   {events.filter((event) => event.startAt < new Date(day.getTime() + 86400000) && event.endAt >= day).map((event) => (
                     <li key={event.id} className={`calendar-event calendar-${event.audience.toLowerCase()} calendar-${event.kind}`}>
-                      {event.kind === "task" ? <span className="calendar-event-time">Due</span> : <span className="calendar-event-time">{timeLabel(event.startAt)}</span>}
+                      {event.kind !== "manual" ? <span className="calendar-event-time">Due</span> : <span className="calendar-event-time">{timeLabel(event.startAt)}</span>}
                       <details>
                         <summary>{event.title}</summary>
                         <div className="calendar-event-panel">
-                          <p>{timeLabel(event.startAt)}{event.kind === "manual" ? `–${timeLabel(event.endAt)}` : ""}</p>
+                          <p>{event.kind === "manual" ? `${timeLabel(event.startAt)}–${timeLabel(event.endAt)}` : `Due ${event.startAt.toLocaleDateString()}`}</p>
                           <p>{event.audience === "Client" ? "Client-facing event" : "Internal event"} · {event.responsible}</p>
                           {event.attendees.length ? <p>Attending: {event.attendees.join(", ")}</p> : null}
                           {event.matterId && event.matterNumber ? <p><Link href={`/matters/${event.matterId}`}>Matter {event.matterNumber}</Link></p> : null}

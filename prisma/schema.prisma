@@ -31,6 +31,12 @@ enum TaskStatus {
   Complete
 }
 
+enum PhysicalFileStatus {
+  InStorage
+  OutOfStorage
+  Closed
+}
+
 enum MatterStageKind {
   A
   W
@@ -60,6 +66,10 @@ model Firm {
   documentReferences DocumentReference[]
   taskNudges      TaskNudge[]
   calendarEvents CalendarEvent[]
+  serviceRecords ServiceRecord[]
+  serviceTraces ServiceTrace[]
+  duties DutyRecord[]
+  physicalFiles PhysicalFile[]
 }
 
 model SetupConfiguration {
@@ -110,6 +120,11 @@ model User {
   createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreator")
   calendarEventAttendances CalendarEventAttendee[]
   completedCalendarChecklistItems CalendarEventChecklistItem[] @relation("CalendarChecklistCompleter")
+  createdServiceRecords ServiceRecord[] @relation("ServiceRecordCreator")
+  createdServiceTraces ServiceTrace[] @relation("ServiceTraceCreator")
+  createdDuties DutyRecord[] @relation("DutyCreator")
+  assignedDuties DutyRecord[] @relation("DutyAssignee")
+  physicalFileCheckouts PhysicalFile[] @relation("PhysicalFileBorrower")
 
   @@unique([email])
   @@unique([id, firmId])
@@ -261,6 +276,9 @@ model Matter {
   activities        MatterActivity[]
   documentReferences DocumentReference[]
   calendarEvents    CalendarEvent[]
+  serviceRecords    ServiceRecord[]
+  duties            DutyRecord[]
+  physicalFile      PhysicalFile?
 
   @@unique([id, firmId])
   @@unique([firmId, matterNumber])
@@ -354,6 +372,94 @@ model TaskNudge {
 
   @@index([firmId, recipientId, createdAt])
   @@index([firmId, taskId, createdAt])
+}
+
+model ServiceRecord {
+  id          String   @id @default(cuid())
+  firmId      String
+  firm        Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId    String
+  matter      Matter   @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  recipient   String
+  serviceType String
+  status      String   @default("Pending")
+  outcome     String?
+  serviceDate DateTime?
+  details     String?
+  createdById String
+  createdBy   User     @relation("ServiceRecordCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  traces      ServiceTrace[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, status, serviceDate])
+  @@index([firmId, matterId, createdAt])
+}
+
+model ServiceTrace {
+  id          String        @id @default(cuid())
+  firmId      String
+  firm        Firm          @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  serviceId   String
+  service     ServiceRecord @relation(fields: [serviceId, firmId], references: [id, firmId], onDelete: Cascade)
+  attempt     Int
+  attemptedAt DateTime      @default(now())
+  note        String
+  createdById String
+  createdBy   User          @relation("ServiceTraceCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+
+  @@unique([serviceId, attempt])
+  @@index([firmId, serviceId, attemptedAt])
+}
+
+model DutyRecord {
+  id           String   @id @default(cuid())
+  firmId       String
+  firm         Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId     String?
+  matter       Matter?  @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  title        String
+  method       String
+  dueAt        DateTime?
+  status       String   @default("Scheduled")
+  returnedAt   DateTime?
+  returnNotes  String?
+  assignedToId String
+  assignedTo   User     @relation("DutyAssignee", fields: [assignedToId, firmId], references: [id, firmId], onDelete: Restrict)
+  createdById  String
+  createdBy    User     @relation("DutyCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, status, dueAt])
+  @@index([firmId, assignedToId, status, dueAt])
+}
+
+model PhysicalFile {
+  id               String             @id @default(cuid())
+  firmId           String
+  firm             Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId         String
+  matter           Matter             @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  location         String
+  folder           String
+  status           PhysicalFileStatus @default(InStorage)
+  borrowerId       String?
+  borrower         User?              @relation("PhysicalFileBorrower", fields: [borrowerId, firmId], references: [id, firmId], onDelete: Restrict)
+  checkedOutAt     DateTime?
+  boxNumber        String?
+  dateSent         DateTime?
+  storageCompany   String?
+  barcodeReference String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([matterId, firmId])
+  @@unique([id, firmId])
+  @@index([firmId, status, location])
+  @@index([firmId, boxNumber, barcodeReference])
 }
 
 enum CalendarEventAudience {

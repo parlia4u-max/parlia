@@ -418,7 +418,11 @@ export function SetupSectionEditor({
   }
 
   return (
-    <ActionForm action={saveSetupDraft} className="foundation-form setup-editor-form">
+    <ActionForm
+      action={saveSetupDraft}
+      className="foundation-form setup-editor-form"
+      confirmationMessage={section === "filingStructure" ? "Are you sure? Updating filing locations or folders may affect how staff find physical files." : undefined}
+    >
       <input name="section" type="hidden" value={section} />
       <input name="value" type="hidden" value={JSON.stringify(value)} />
       {fields}

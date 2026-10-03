@@ -1060,6 +1060,11 @@ input:focus-visible {
   background: #c3d6e6;
 }
 
+.calendar-event.calendar-duty {
+  border-color: #c5ad7a;
+  background: #eddfbf;
+}
+
 .calendar-event-time {
   display: block;
   margin-bottom: 3px;

@@ -71,6 +71,10 @@ export async function saveSetupDraft(_state: string | null, formData: FormData):
       const current = await tx.setupConfiguration.findUnique({ where: { firmId: user.firmId } });
       if (!current) throw new ActionError("Setup is not available for this firm.");
       const draft = current.draft as Record<string, unknown>;
+      if (validSection === "filingStructure" && JSON.stringify(draft.filingStructure) !== JSON.stringify(value) &&
+        formData.get("confirmation") !== "confirmed") {
+        throw new ActionError("Confirm that you are sure before changing the filing structure.");
+      }
       await tx.setupConfiguration.update({
         where: { firmId: user.firmId },
         data: { draft: { ...draft, [validSection]: value } as never },
@@ -94,7 +98,7 @@ export async function saveSetupDraft(_state: string | null, formData: FormData):
   }
 }
 
-export async function publishSetup(_state: string | null, _formData: FormData): Promise<string | null> {
+export async function publishSetup(_state: string | null, formData: FormData): Promise<string | null> {
   try {
     const user = await currentFirmUser();
     if (!user.isOwner) throw new ActionError("Only the firm owner can publish setup.");
@@ -105,6 +109,11 @@ export async function publishSetup(_state: string | null, _formData: FormData): 
       const config = await tx.setupConfiguration.findUnique({ where: { firmId: user.firmId } });
       if (!config) throw new ActionError("Setup is not available for this firm.");
       const draft = config.draft as Record<string, unknown>;
+      const published = config.published as Record<string, unknown>;
+      if (config.publishedAt && JSON.stringify(draft.filingStructure) !== JSON.stringify(published.filingStructure) &&
+        formData.get("confirmation") !== "confirmed") {
+        throw new ActionError("Confirm that you are sure before publishing filing structure changes.");
+      }
       for (const section of SETUP_SECTIONS) validateSetupValue(section.key, draft[section.key]);
       const activeCategories = new Set((draft.taskTypes as { categories: string[] }[])
         .flatMap((taskType) => taskType.categories));

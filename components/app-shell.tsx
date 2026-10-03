@@ -49,6 +49,9 @@ const menuGroups: MenuGroup[] = [
       { label: "Stages board", href: "/matters/board", icon: "filing" },
       { label: "My to-do", href: "/tasks", icon: "tasks" },
       { label: "Calendar", href: "/calendar", icon: "calendar" },
+      { label: "Service & tracing", href: "/service-tracing", icon: "service" },
+      { label: "Duties", href: "/duties", icon: "filing" },
+      { label: "Physical files", href: "/physical-files", icon: "filing" },
     ],
   },
   {
@@ -158,6 +161,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
         if (item.href === "/matters" || item.href === "/matters/board") return navigationAccess.canViewMatters;
         if (item.href === "/tasks") return navigationAccess.canViewTasks;
         if (item.href === "/calendar") return navigationAccess.canViewCalendar;
+        if (item.href === "/service-tracing" || item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||
           item.href === "/settings/permissions" || item.href === "/settings/integrations" ||

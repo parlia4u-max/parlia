@@ -77,7 +77,13 @@ export async function SetupHomePage() {
             <p>{config.publishedAt ? `Last published ${config.publishedAt.toLocaleString()}.` : "Review the seeded defaults and publish when they are ready."} {user.isOwner ? "Only you can publish." : "You can draft the sections granted to you; only the owner can publish."}</p>
           </div>
           {user.isOwner ? (
-            <ActionForm action={publishSetup} className="setup-publish-form">
+            <ActionForm
+              action={publishSetup}
+              className="setup-publish-form"
+              confirmationMessage={config.publishedAt && JSON.stringify(draft.filingStructure) !== JSON.stringify(published.filingStructure)
+                ? "Are you sure? Publishing will change this firm's active filing locations or folders."
+                : undefined}
+            >
               <SubmitButton>Publish setup</SubmitButton>
             </ActionForm>
           ) : null}
