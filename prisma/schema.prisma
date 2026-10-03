@@ -59,6 +59,7 @@ model Firm {
   matterActivities MatterActivity[]
   documentReferences DocumentReference[]
   taskNudges      TaskNudge[]
+  calendarEvents CalendarEvent[]
 }
 
 model SetupConfiguration {
@@ -104,6 +105,11 @@ model User {
   documentReferences DocumentReference[]
   sentTaskNudges     TaskNudge[]       @relation("TaskNudgeSender")
   receivedTaskNudges TaskNudge[]       @relation("TaskNudgeRecipient")
+  ownedCalendarEvents CalendarEvent[] @relation("CalendarEventOwner")
+  responsibleCalendarEvents CalendarEvent[] @relation("CalendarEventResponsible")
+  createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreator")
+  calendarEventAttendances CalendarEventAttendee[]
+  completedCalendarChecklistItems CalendarEventChecklistItem[] @relation("CalendarChecklistCompleter")
 
   @@unique([email])
   @@unique([id, firmId])
@@ -254,6 +260,7 @@ model Matter {
   notes             MatterNote[]
   activities        MatterActivity[]
   documentReferences DocumentReference[]
+  calendarEvents    CalendarEvent[]
 
   @@unique([id, firmId])
   @@unique([firmId, matterNumber])
@@ -347,4 +354,79 @@ model TaskNudge {
 
   @@index([firmId, recipientId, createdAt])
   @@index([firmId, taskId, createdAt])
+}
+
+enum CalendarEventAudience {
+  Internal
+  Client
+}
+
+model CalendarEvent {
+  id            String                @id @default(cuid())
+  firmId        String
+  firm          Firm                  @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  ownerId       String
+  owner         User                  @relation("CalendarEventOwner", fields: [ownerId, firmId], references: [id, firmId], onDelete: Cascade)
+  responsibleId String
+  responsible   User                  @relation("CalendarEventResponsible", fields: [responsibleId, firmId], references: [id, firmId], onDelete: Restrict)
+  createdById   String
+  createdBy     User                  @relation("CalendarEventCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  matterId      String?
+  matter        Matter?               @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  title         String
+  description   String?
+  startAt       DateTime
+  endAt         DateTime
+  audience      CalendarEventAudience @default(Internal)
+  meetingUrl    String?
+  attendees     CalendarEventAttendee[]
+  checklist     CalendarEventChecklistItem[]
+  documents     CalendarEventDocumentReference[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, ownerId, startAt])
+  @@index([firmId, startAt, endAt])
+  @@index([firmId, matterId, startAt])
+}
+
+model CalendarEventAttendee {
+  id        String        @id @default(cuid())
+  firmId    String
+  eventId   String
+  event     CalendarEvent @relation(fields: [eventId, firmId], references: [id, firmId], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@unique([eventId, userId])
+  @@index([firmId, userId, eventId])
+}
+
+model CalendarEventChecklistItem {
+  id           String        @id @default(cuid())
+  firmId       String
+  eventId      String
+  event        CalendarEvent @relation(fields: [eventId, firmId], references: [id, firmId], onDelete: Cascade)
+  label        String
+  completed    Boolean       @default(false)
+  completedById String?
+  completedBy  User?         @relation("CalendarChecklistCompleter", fields: [completedById, firmId], references: [id, firmId], onDelete: NoAction)
+  completedAt  DateTime?
+  createdAt    DateTime      @default(now())
+
+  @@index([firmId, eventId, createdAt])
+}
+
+model CalendarEventDocumentReference {
+  id        String        @id @default(cuid())
+  firmId    String
+  eventId   String
+  event     CalendarEvent @relation(fields: [eventId, firmId], references: [id, firmId], onDelete: Cascade)
+  label     String
+  url       String
+  createdAt DateTime      @default(now())
+
+  @@index([firmId, eventId, createdAt])
 }

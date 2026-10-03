@@ -18,7 +18,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const currentUser = await getCurrentUser();
-  let navigationAccess: NavigationAccess = { isOwner: false, canViewPeople: false, canViewMatters: false, canViewTasks: false, setupHrefs: [] };
+  let navigationAccess: NavigationAccess = { isOwner: false, canViewPeople: false, canViewMatters: false, canViewTasks: false, canViewCalendar: false, setupHrefs: [] };
   if (currentUser) {
     const setupHrefs: string[] = [];
     if (currentUser.isOwner) {
@@ -48,6 +48,7 @@ export default async function RootLayout({
       canViewPeople: hasPermission(currentUser, "people"),
       canViewMatters: hasPermission(currentUser, "matters"),
       canViewTasks: hasPermission(currentUser, "tasks"),
+      canViewCalendar: hasPermission(currentUser, "calendar"),
       setupHrefs,
     };
   }
