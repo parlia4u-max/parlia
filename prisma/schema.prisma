@@ -106,6 +106,8 @@ model Firm {
   slug            String?          @unique
   consultationRequests ConsultationRequest[]
   possibleBillings PossibleBilling[]
+  matterDocuments MatterDocument[]
+  documentViews ClientDocumentView[]
   portalAccessRequests PortalAccessRequest[]
   staffSeatLimit  Int?
   createdAt       DateTime         @default(now())
@@ -376,6 +378,7 @@ model Matter {
   clientStepOverride String?
   clientStepEstimates Json?
   possibleBillings  PossibleBilling[]
+  matterDocuments   MatterDocument[]
   matterType        String
   stage             String
   stageKind         MatterStageKind @default(A)
@@ -652,6 +655,8 @@ model ClientPortalAccount {
   matterAccess ClientMatterAccess[]
   invitations  ClientPortalInvitation[]
   submissions  ClientDocumentReference[]
+  introSeenAt  DateTime?
+  documentViews ClientDocumentView[]
 
   @@unique([id, firmId])
   @@unique([firmId, email])
@@ -1287,4 +1292,35 @@ model PossibleBilling {
 
   @@unique([id, firmId])
   @@index([firmId, matterId, status])
+}
+
+model MatterDocument {
+  id             String   @id @default(cuid())
+  firmId         String
+  firm           Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId       String
+  matter         Matter   @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  label          String
+  referenceUrl   String
+  sharedWithClient Boolean @default(false)
+  sharedAt       DateTime?
+  addedById      String
+  createdAt      DateTime @default(now())
+  views          ClientDocumentView[]
+
+  @@unique([id, firmId])
+  @@index([firmId, matterId, sharedWithClient])
+}
+
+model ClientDocumentView {
+  id         String               @id @default(cuid())
+  firmId     String
+  firm       Firm                 @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  documentId String
+  document   MatterDocument       @relation(fields: [documentId, firmId], references: [id, firmId], onDelete: Cascade)
+  clientId   String
+  client     ClientPortalAccount  @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  viewedAt   DateTime             @default(now())
+
+  @@index([firmId, documentId])
 }

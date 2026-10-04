@@ -10,7 +10,7 @@ import {
   updateMatterStatus,
   updateTaskAssignment,
 } from "@/app/actions/matters";
-import { createClientPortalUpdate, decidePossibleBilling, revokeClientMatterAccess, setClientStep } from "@/app/actions/client-portal";
+import { createClientPortalUpdate, addMatterDocument, decidePossibleBilling, revokeClientMatterAccess, setDocumentShared, setClientStep } from "@/app/actions/client-portal";
 import { cancelPortalInvitation, inviteClientToMatter, sendPortalInvitation } from "@/app/actions/client-auth";
 import { portalInviteStatus } from "@/lib/portal-status";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
@@ -101,7 +101,7 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
   const urgencyBands = Array.isArray(published.urgencyBands) ? published.urgencyBands as UrgencyBand[] : [];
   const categories = taskCategoriesFromConfig(configuration?.published);
   const portalSettings = portalSettingsFromConfig(configuration?.published);
-  const [portalAccess, portalUpdates, latestInvitation, removedAccessCount, pendingBillings] = canEditMatter ? await Promise.all([
+  const [portalAccess, portalUpdates, latestInvitation, removedAccessCount, pendingBillings, matterDocuments] = canEditMatter ? await Promise.all([
     db.clientMatterAccess.findMany({
       where: { firmId: user.firmId, matterId: matter.id, revokedAt: null },
       include: { client: { select: { id: true, name: true, email: true, active: true } } },
@@ -116,7 +116,8 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
     db.clientPortalInvitation.findFirst({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true, expiresAt: true, acceptedAt: true } }),
     db.clientMatterAccess.count({ where: { firmId: user.firmId, matterId: matter.id, revokedAt: { not: null } } }),
     db.possibleBilling.findMany({ where: { firmId: user.firmId, matterId: matter.id, status: "Pending" }, orderBy: { createdAt: "desc" }, take: 50 }),
-  ]) : [[], [], null, 0, []] as const;
+    db.matterDocument.findMany({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, take: 200, include: { _count: { select: { views: true } } } }),
+  ]) : [[], [], null, 0, [], []] as const;
   const rawType = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === matter.matterType);
   const clientSteps = clientStepsForType(rawType, stages);
   const trackerNow = computeTracker({ steps: clientSteps, currentStage: matter.stage, override: matter.clientStepOverride, estimates: matter.clientStepEstimates, showEstimates: true });
@@ -195,6 +196,28 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
             </article>
           ))}
         </div> : null}
+        <details>
+          <summary>More - documents for the client</summary>
+          <p className="foundation-muted">Add a link to a file in the firm system. Nothing is visible to the client unless you tick "Share with client".</p>
+          <ActionForm action={addMatterDocument} className="foundation-form">
+            <input type="hidden" name="matterId" value={matter.id} />
+            <label className="foundation-field"><span>Document name</span><input name="label" maxLength={160} required /></label>
+            <label className="foundation-field"><span>Secure document link</span><input name="referenceUrl" type="url" maxLength={2048} placeholder="https://..." required /></label>
+            <label className="foundation-field"><span><input type="checkbox" name="share" /> Share with client</span></label>
+            <SubmitButton>Add document</SubmitButton>
+          </ActionForm>
+          {matterDocuments.map((doc) => (
+            <article className="todo-card" key={doc.id}>
+              <p>{doc.label} - {doc.sharedWithClient ? "Shared with client" : "Not shared"} - opened by client {doc._count.views} time(s)</p>
+              <ActionForm action={setDocumentShared}>
+                <input type="hidden" name="matterId" value={matter.id} />
+                <input type="hidden" name="documentId" value={doc.id} />
+                <input type="hidden" name="share" value={doc.sharedWithClient ? "no" : "yes"} />
+                <SubmitButton className="button-secondary">{doc.sharedWithClient ? "Stop sharing" : "Share with client"}</SubmitButton>
+              </ActionForm>
+            </article>
+          ))}
+        </details>
         {trackerNow ? <details>
           <summary>More · client tracker step</summary>
           <p className="foundation-muted">The tracker moves by itself when you change the stage. Use this only to show a different step to the client.</p>

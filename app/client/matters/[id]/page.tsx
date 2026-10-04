@@ -21,6 +21,7 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
         include: {
           responsible: { select: { name: true } },
           clientPortalUpdates: { where: { firmId: client.firmId, sharedAt: { not: null } }, orderBy: { sharedAt: "desc" }, take: 100, include: { createdBy: { select: { name: true } } } },
+          matterDocuments: { where: { firmId: client.firmId, sharedWithClient: true }, orderBy: { sharedAt: "desc" }, take: 100, select: { id: true, label: true, sharedAt: true } },
           clientDocumentReferences: { where: { firmId: client.firmId, clientId: client.id }, orderBy: { submittedAt: "desc" }, take: 100 },
         },
       },
@@ -58,6 +59,13 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
         {matter.clientPortalUpdates.length ? <div className="matter-timeline">{matter.clientPortalUpdates.map((update) => (
           <article key={update.id}><h3>{update.title}</h3><p>{update.body}</p><small>{update.sharedAt?.toLocaleString()}</small></article>
         ))}</div> : <p>The firm has not shared an update on this matter yet.</p>}
+      </section>
+      <section className="foundation-panel">
+        <h2>Documents for you</h2>
+        {matter.matterDocuments.length ? <ul className="todo-list">{matter.matterDocuments.map((doc) => (
+          <li key={doc.id}><a href={`/client/documents/${doc.id}`} target="_blank" rel="noopener noreferrer">{doc.label} (opens in a new tab)</a> <small>Shared {doc.sharedAt?.toLocaleDateString()}</small></li>
+        ))}</ul> : <p>The firm has not shared any documents with you yet.</p>}
+        <p className="foundation-muted">Each time you open a document, the firm records it.</p>
       </section>
       <section className="foundation-panel">
         <h2>Submit a document reference for review</h2>

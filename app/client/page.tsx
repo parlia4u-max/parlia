@@ -4,6 +4,8 @@ import { logoutClient } from "@/app/actions/client-auth";
 import { FoundationHeader } from "@/components/foundation";
 import { getCurrentClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
+import { ClientIntro } from "@/components/client-intro";
+import { getFirmPortalContext } from "@/lib/firm-portal";
 
 export default async function ClientPortalPage() {
   const client = await getCurrentClient();
@@ -27,6 +29,7 @@ export default async function ClientPortalPage() {
       <FoundationHeader title="Client portal" firm={client.firm.name} />
       <div className="attendance-report-heading">
         <p className="foundation-intro">Welcome, {client.name}. You can see only matters the firm explicitly connected to this account and updates the firm explicitly shared.</p>
+        <Link className="button-secondary link-button" href="/client/how-it-works">How it works</Link>
         <form action={logoutClient}><button className="button-secondary" type="submit">Sign out</button></form>
       </div>
       <section className="foundation-panel">

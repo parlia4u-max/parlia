@@ -217,3 +217,54 @@ export async function decidePossibleBilling(_state: string | null, form: FormDat
     return actionErrorMessage(error);
   }
 }
+
+export async function addMatterDocument(_state: string | null, form: FormData): Promise<string | null> {
+  try {
+    const matterId = text(form, "matterId", "Matter", 80);
+    const { user, matter, db } = await authorizedMatterEditor(matterId);
+    const label = text(form, "label", "Document name", 160);
+    const referenceUrl = validatedDocumentReference(text(form, "referenceUrl", "Document link", 2048));
+    const share = form.get("share") === "on";
+    await db.$transaction(async (tx) => {
+      const created = await tx.matterDocument.create({
+        data: { firmId: user.firmId, matterId: matter.id, label, referenceUrl, addedById: user.id, sharedWithClient: share, sharedAt: share ? new Date() : null },
+        select: { id: true },
+      });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: share ? "client_portal.document_shared" : "client_portal.document_added", entityType: "matter-document", entityId: created.id, details: { matterId: matter.id } } });
+    });
+    revalidatePath(`/matters/${matter.id}`);
+    revalidatePath(`/client/matters/${matter.id}`);
+    return share ? "success:Document added and shared with the client." : "success:Document added. It is not shared with the client.";
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+}
+
+export async function setDocumentShared(_state: string | null, form: FormData): Promise<string | null> {
+  try {
+    const matterId = text(form, "matterId", "Matter", 80);
+    const documentId = text(form, "documentId", "Document", 80);
+    const share = form.get("share") === "yes";
+    const { user, matter, db } = await authorizedMatterEditor(matterId);
+    await db.$transaction(async (tx) => {
+      const changed = await tx.matterDocument.updateMany({
+        where: { id: documentId, firmId: user.firmId, matterId: matter.id },
+        data: { sharedWithClient: share, sharedAt: share ? new Date() : null },
+      });
+      if (changed.count !== 1) throw new ActionError("Document not found on this matter.");
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: share ? "client_portal.document_shared" : "client_portal.document_unshared", entityType: "matter-document", entityId: documentId, details: { matterId: matter.id } } });
+    });
+    revalidatePath(`/matters/${matter.id}`);
+    revalidatePath(`/client/matters/${matter.id}`);
+    return share ? "success:Shared with the client." : "success:No longer shared.";
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+}
+
+export async function markIntroSeen(): Promise<void> {
+  const client = await getCurrentClient();
+  if (!client) return;
+  await getDb().clientPortalAccount.updateMany({ where: { id: client.id, firmId: client.firmId, introSeenAt: null }, data: { introSeenAt: new Date() } });
+  revalidatePath("/client");
+}
