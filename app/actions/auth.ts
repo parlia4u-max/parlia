@@ -6,6 +6,7 @@ import { ActionError, actionErrorMessage } from "@/lib/errors";
 import { audit, createSession, signOut } from "@/lib/auth";
 import { appUrl, requireEmailConfiguration, sendEmail } from "@/lib/email";
 import { getDb } from "@/lib/db";
+import { logFailure } from "@/lib/diagnostics";
 import { MODULES } from "@/lib/permissions";
 import { createInitialSetupConfig } from "@/lib/setup-config";
 import { hashPassword, hashToken, hashVerificationCode, normalizeEmail, randomToken, randomVerificationCode, required, requiredSecret, validEmail, verifyPassword } from "@/lib/security";
@@ -58,6 +59,7 @@ function actionError(error: unknown) {
 
 export async function createOwner(_state: string | null, formData: FormData): Promise<string | null> {
   let ownerEmail = "";
+  let step = "read-form";
   try {
     const firmName = required(formData.get("firmName"), "Firm name");
     const name = required(formData.get("name"), "Your name");
@@ -66,13 +68,20 @@ export async function createOwner(_state: string | null, formData: FormData): Pr
     const password = requiredSecret(formData.get("password"), "Password");
     if (firmName.length > 120 || name.length > 120) throw new ActionError("Firm and owner names must be 120 characters or fewer.");
     if (!validEmail(email) || email.length > 254) throw new ActionError("Enter a valid email address.");
+    step = "email-configuration";
     requireEmailConfiguration();
+    step = "verification-key";
     hashVerificationCode("configuration-check");
+    step = "hash-password";
     const passwordHash = await hashPassword(password);
+    step = "database-connect";
     const db = getDb();
+    step = "check-existing-user";
     if (await db.user.findUnique({ where: { email } })) throw new ActionError("An account with this email already exists.");
+    step = "create-codes";
     const code = randomVerificationCode();
     const codeHash = hashVerificationCode(code);
+    step = "create-firm-transaction";
     await db.$transaction(async (tx) => {
       const firm = await tx.firm.create({ data: { name: firmName } });
       const baseSlug = slugFromName(firmName);
@@ -117,12 +126,15 @@ export async function createOwner(_state: string | null, formData: FormData): Pr
       });
       return user;
     });
+    step = "send-verification-email";
     try {
       await sendEmail(email, "Your Parlia verification code", `Your Parlia verification code is ${code}. It expires in 10 minutes.`);
     } catch (error) {
+      logFailure("sign-up", step, error);
       return `${actionError(error)} Your firm is saved. Sign in to request a new verification code.`;
     }
   } catch (error) {
+    if (!(error instanceof ActionError)) logFailure("sign-up", step, error);
     return actionError(error);
   }
   redirect(`/owner-account?email=${encodeURIComponent(ownerEmail)}&mode=signup`);

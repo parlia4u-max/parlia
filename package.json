@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
+    "check:database": "node scripts/check-database.mjs",
     "start": "next start",
     "test": "node --experimental-strip-types --test tests/*.test.mts"
   },
