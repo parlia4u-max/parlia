@@ -110,6 +110,7 @@ model Firm {
   invoices Invoice[]
   paymentProofs PaymentProof[]
   clientNotifications ClientNotification[]
+  timeEntries TimeEntry[]
   documentViews ClientDocumentView[]
   portalAccessRequests PortalAccessRequest[]
   staffSeatLimit  Int?
@@ -192,6 +193,7 @@ model User {
   verificationSentAt DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  timeEntries        TimeEntry[]
   sessions           Session[]
   loginChallenges    LoginChallenge[]
   passwordResets     PasswordReset[]
@@ -384,6 +386,7 @@ model Matter {
   matterDocuments   MatterDocument[]
   invoices          Invoice[]
   notifications     ClientNotification[]
+  timeEntries       TimeEntry[]
   matterType        String
   stage             String
   stageKind         MatterStageKind @default(A)
@@ -869,6 +872,8 @@ model CalendarEvent {
   endAt         DateTime
   audience      CalendarEventAudience @default(Internal)
   meetingUrl    String?
+  graphEventId  String?
+  bookedByClientId String?
   attendees     CalendarEventAttendee[]
   checklist     CalendarEventChecklistItem[]
   documents     CalendarEventDocumentReference[]
@@ -1414,4 +1419,22 @@ model ClientNotification {
 
   @@index([firmId, clientId, doneAt])
   @@index([firmId, matterId, doneAt])
+}
+model TimeEntry {
+  id        String    @id @default(cuid())
+  firmId    String
+  firm      Firm      @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId  String
+  matter    Matter    @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  startedAt DateTime
+  endedAt   DateTime?
+  minutes   Int?
+  note      String?
+  createdAt DateTime  @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, matterId, startedAt])
+  @@index([firmId, userId, endedAt])
 }

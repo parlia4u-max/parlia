@@ -9,6 +9,9 @@ import { getDb } from "@/lib/db";
 import { KIND_LABELS, VIEW_ONLY_KINDS } from "@/lib/client-notify-rules";
 import { ClientTracker } from "@/components/client-tracker";
 import { ClientInvoices } from "@/components/client-invoices";
+import { ClientBooking } from "@/components/client-booking";
+import { availabilityFromConfig } from "@/lib/availability";
+import { availableSlotsForMatter } from "@/app/actions/client-booking";
 import { clientStepsForType, computeTracker } from "@/lib/client-tracker";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
 
@@ -37,6 +40,9 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
   await getDb().clientNotification.updateMany({ where: { firmId: client.firmId, clientId: client.id, matterId: matter.id, readAt: null }, data: { readAt: now } });
   await getDb().clientNotification.updateMany({ where: { firmId: client.firmId, clientId: client.id, matterId: matter.id, doneAt: null, kind: { in: [...VIEW_ONLY_KINDS] } }, data: { doneAt: now } });
   const setup = await getDb().setupConfiguration.findUnique({ where: { firmId: client.firmId }, select: { published: true } });
+  const availability = availabilityFromConfig(setup?.published);
+  const slots = availability.enabled ? (await availableSlotsForMatter(matter.id)).map((slot) => slot.toISOString()) : [];
+  const upcoming = await getDb().calendarEvent.findMany({ where: { firmId: client.firmId, matterId: matter.id, audience: "Client", startAt: { gte: now } }, orderBy: { startAt: "asc" }, take: 10, select: { id: true, title: true, startAt: true, meetingUrl: true, bookedByClientId: true } });
   const published = setup?.published && typeof setup.published === "object" ? setup.published as Record<string, unknown> : {};
   const type = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === matter.matterType);
   const typeStages = Array.isArray((type as Record<string, unknown> | undefined)?.stages) ? (type as { stages: { name: string; kind: string }[] }).stages : [];
@@ -77,6 +83,7 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
         ))}</ul> : <p>The firm has not shared any documents with you yet.</p>}
         <p className="foundation-muted">Each time you open a document, the firm records it.</p>
       </section>
+      <ClientBooking matterId={matter.id} enabled={availability.enabled} slots={slots} meetings={upcoming.map((item) => ({ id: item.id, title: item.title, startAt: item.startAt, meetingUrl: item.meetingUrl, cancellable: item.bookedByClientId === client.id && item.startAt.getTime() - now.getTime() >= availability.noticeHours * 3_600_000 }))} />
       <ClientInvoices
         maxMb={portalSettingsFromConfig(setup?.published).maxUploadMb}
         types={portalSettingsFromConfig(setup?.published).allowedUploadTypes}

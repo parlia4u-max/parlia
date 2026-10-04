@@ -1,12 +1,13 @@
 import { ConsultationRequestsPanel } from "@/components/consultation-requests";
 import Link from "next/link";
-import { addCalendarChecklistItem, createCalendarEvent, createCalendarFollowUpTask, toggleCalendarChecklistItem } from "@/app/actions/calendar";
+import { addCalendarChecklistItem, syncCalendarFromOutlook, createCalendarEvent, createCalendarFollowUpTask, toggleCalendarChecklistItem } from "@/app/actions/calendar";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { FoundationHeader } from "@/components/foundation";
 import { completeTask } from "@/app/actions/matters";
 import { calendarRange, dateKey, effectiveCalendarVisibility, parseCalendarDate, validCalendarView } from "@/lib/calendar";
 import { requirePermission, hasPermission, permissionScope } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { hasMicrosoftConnection } from "@/lib/microsoft-graph";
 
 type Search = { date?: string; view?: string; types?: string | string[]; calendars?: string | string[]; filtered?: string; audienceFiltered?: string; audience?: string | string[] };
 type CalendarRecord = {
@@ -51,6 +52,7 @@ function calendarHref(date: Date, view: string, calendars: string[], types: stri
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("calendar");
+  const teamsReady = await hasMicrosoftConnection(user.firmId);
   const canViewTasks = hasPermission(user, "tasks");
   const canEditTasks = hasPermission(user, "tasks", "Edit");
   const canViewMatters = hasPermission(user, "matters");
@@ -302,6 +304,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           {user.role?.permissions.some((permission) => permission.module === "calendar" && permission.level === "Edit") || user.isOwner ? (
             <section className="foundation-panel">
               <h2>Add an event</h2>
+              {teamsReady ? <ActionForm action={syncCalendarFromOutlook}><SubmitButton className="button-secondary">Update my Teams meetings from Outlook</SubmitButton></ActionForm> : null}
               <ActionForm action={createCalendarEvent} className="foundation-form calendar-event-form">
                 <label className="foundation-field"><span>Event name</span><input name="title" maxLength={160} required /></label>
                 <label className="foundation-field"><span>Starts</span><input name="startAt" type="datetime-local" required /></label>
@@ -312,6 +315,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 <details><summary>More event details</summary>
                   {matterAllowed ? <label className="foundation-field"><span>Matter</span><select name="matterId" defaultValue=""><option value="">No matter</option>{matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.matterNumber}</option>)}</select></label> : null}
                   <label className="foundation-field"><span>Meeting link (HTTPS)</span><input name="meetingUrl" type="url" /></label>
+                  {teamsReady ? <label className="setup-checkbox-field"><input type="checkbox" name="createTeams" /><span>Create a Teams meeting (used when the link above is empty)</span></label> : <p className="foundation-muted">Connect Microsoft 365 in Setup to create Teams meetings from here.</p>}
                   <label className="foundation-field"><span>Notes</span><textarea name="description" maxLength={4000} /></label>
                   <label className="foundation-field"><span>Document link label</span><input name="documentLabel" maxLength={160} /></label>
                   <label className="foundation-field"><span>Document link (HTTPS)</span><input name="documentUrl" type="url" /></label>

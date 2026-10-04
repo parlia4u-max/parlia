@@ -469,6 +469,37 @@ export function SetupSectionEditor({
       );
       break;
     }
+    case "availability": {
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const days = Array.isArray(value.weekdays) ? value.weekdays as number[] : [];
+      fields = (
+        <div className="setup-list-editor">
+          <p className="foundation-muted">Clients book a meeting with the matter's responsible person on their matter page. Times are South African time.</p>
+          <label className="setup-integration-row">
+            <span><strong>Let clients book meetings</strong></span>
+            <input type="checkbox" checked={Boolean(value.enabled)} onChange={(event) => setField("enabled", event.target.checked)} />
+          </label>
+          <fieldset className="setup-edit-card">
+            <legend>Days clients can book</legend>
+            {dayNames.map((name, index) => (
+              <label className="setup-checkbox-field" key={name}>
+                <input type="checkbox" checked={days.includes(index)} onChange={(event) => setField("weekdays", event.target.checked ? [...days, index] : days.filter((day) => day !== index))} />
+                <span>{name}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="setup-field-grid">
+            <TextField label="First meeting starts (e.g. 09:00)" value={value.startTime} maxLength={5} onChange={(next) => setField("startTime", next)} />
+            <TextField label="Last meeting ends (e.g. 16:00)" value={value.endTime} maxLength={5} onChange={(next) => setField("endTime", next)} />
+            <NumberField label="Meeting length (minutes)" value={value.slotMinutes} max={240} onChange={(next) => setField("slotMinutes", next)} />
+            <NumberField label="Gap between meetings (minutes)" value={value.bufferMinutes} max={120} onChange={(next) => setField("bufferMinutes", next)} />
+            <NumberField label="Minimum notice (hours)" value={value.noticeHours} max={336} onChange={(next) => setField("noticeHours", next)} />
+            <NumberField label="How many days ahead" value={value.maxDaysAhead} max={180} onChange={(next) => setField("maxDaysAhead", next)} />
+          </div>
+        </div>
+      );
+      break;
+    }
     case "integrations":      fields = (
         <div className="setup-list-editor">
           <p className="foundation-muted">These switches record preferences only. They do not connect provider accounts or synchronize calendar events. Manage OAuth connections from Settings → Calendar integrations.</p>

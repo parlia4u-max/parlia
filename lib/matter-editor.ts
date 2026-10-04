@@ -12,7 +12,7 @@ export async function authorizedMatterEditor(matterId: string) {
     include: { role: { include: { permissions: true } }, firm: { select: { name: true } } },
   });
   if (!user || !hasPermission(user, "matters", "Edit")) throw new ActionError("Matter edit permission is required.");
-  const matter = await db.matter.findFirst({ where: { id: matterId, firmId: user.firmId }, select: { id: true, matterNumber: true, responsibleId: true } });
+  const matter = await db.matter.findFirst({ where: { id: matterId, firmId: user.firmId }, select: { id: true, matterNumber: true, responsibleId: true, clientEmail: true, clientName: true, clientSurname: true } });
   if (!matter) throw new ActionError("Matter not found in this firm.");
   const scope = permissionScope(user, "matters");
   const reports = scope === "Team" ? await db.supervisorLink.findMany({

@@ -7,6 +7,8 @@ import { getCurrentUser, hasPermission, permissionScope } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { taskCategoriesFromConfig } from "@/lib/matter-config";
 import { effectiveCalendarVisibility } from "@/lib/calendar";
+import { notifyMatterClients } from "@/lib/client-notify";
+import { createTeamsMeeting, fetchOutlookEvent } from "@/lib/microsoft-graph";
 
 async function calendarUser(edit = false) {
   const current = await getCurrentUser();
@@ -120,20 +122,32 @@ export async function createCalendarEvent(_state: string | null, formData: FormD
       });
       if (!matter) throw new ActionError("Choose a matter within your access scope.");
     }
+    let finalMeetingUrl = meetingUrl;
+    let graphEventId: string | null = null;
+    if (formData.get("createTeams") === "on" && !meetingUrl) {
+      const people = await db.user.findMany({ where: { firmId: user.firmId, id: { in: [...new Set(attendeeIds)] } }, select: { email: true } });
+      const teams = await createTeamsMeeting(db, user.firmId, { title, startAt, endAt, notes: description, attendeeEmails: people.map((person) => person.email) });
+      if (!teams) throw new ActionError("The Teams meeting could not be created. Check that Microsoft 365 is connected in Setup > Connections, or paste a meeting link instead.");
+      finalMeetingUrl = teams.joinUrl;
+      graphEventId = teams.graphEventId;
+    }
     await db.$transaction(async (tx) => {
       const event = await tx.calendarEvent.create({
         data: {
           firmId: user.firmId, ownerId: responsibleId, createdById: user.id, responsibleId,
-          matterId, title, description, startAt, endAt, audience, meetingUrl,
+          matterId, title, description, startAt, endAt, audience, meetingUrl: finalMeetingUrl, graphEventId,
           attendees: { create: [...new Set(attendeeIds)].map((userId) => ({ firmId: user.firmId, userId })) },
           ...(documentLabel && documentUrl ? { documents: { create: { label: documentLabel, url: documentUrl } } } : {}),
         },
         select: { id: true },
       });
       await tx.auditLog.create({
-        data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.created", entityType: "calendar-event", entityId: event.id, details: { audience } },
+        data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.created", entityType: "calendar-event", entityId: event.id, details: { audience, teams: Boolean(graphEventId) } },
       });
     });
+    if (audience === "Client" && matterId) {
+      await notifyMatterClients({ firmId: user.firmId, matterId, kind: "Meeting" }).catch(() => undefined);
+    }
     revalidatePath("/calendar");
   } catch (error) {
     return actionErrorMessage(error);
@@ -217,6 +231,36 @@ export async function createCalendarFollowUpTask(_state: string | null, formData
     revalidatePath("/calendar");
     revalidatePath("/tasks");
     return "success:Follow-up task created.";
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+}
+
+export async function syncCalendarFromOutlook(_state: string | null, _formData: FormData): Promise<string | null> {
+  try {
+    const user = await calendarUser(true);
+    const db = getDb();
+    const events = await db.calendarEvent.findMany({
+      where: { firmId: user.firmId, graphEventId: { not: null }, endAt: { gte: new Date() }, ownerId: user.id },
+      select: { id: true, graphEventId: true, title: true, startAt: true, endAt: true },
+      take: 100,
+    });
+    let changed = 0;
+    let removed = 0;
+    for (const event of events) {
+      const remote = await fetchOutlookEvent(db, user.firmId, event.graphEventId!);
+      if (!remote) continue;
+      if (remote === "deleted") {
+        await db.calendarEvent.deleteMany({ where: { id: event.id, firmId: user.firmId } });
+        removed += 1;
+      } else if (remote.startAt.getTime() !== event.startAt.getTime() || remote.endAt.getTime() !== event.endAt.getTime() || (remote.title && remote.title !== event.title)) {
+        await db.calendarEvent.updateMany({ where: { id: event.id, firmId: user.firmId }, data: { startAt: remote.startAt, endAt: remote.endAt, ...(remote.title ? { title: remote.title.slice(0, 160) } : {}) } });
+        changed += 1;
+      }
+    }
+    await db.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "calendar.outlook.synced", entityType: "calendar", entityId: user.id, details: { checked: events.length, changed, removed } } });
+    revalidatePath("/calendar");
+    return `success:Checked ${events.length} Teams meetings. ${changed} changed, ${removed} removed.`;
   } catch (error) {
     return actionErrorMessage(error);
   }

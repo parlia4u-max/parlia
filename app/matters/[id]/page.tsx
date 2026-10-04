@@ -58,6 +58,11 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
     },
   });
   if (!matter) notFound();
+  const canTime = hasPermission(user, "matters", "Edit");
+  const [myRunning, timeEntries] = await Promise.all([
+    db.timeEntry.findFirst({ where: { firmId: user.firmId, userId: user.id, endedAt: null }, select: { matterId: true, startedAt: true } }),
+    db.timeEntry.findMany({ where: { firmId: user.firmId, matterId: matter.id, endedAt: { not: null } }, orderBy: { startedAt: "desc" }, take: 20, include: { user: { select: { name: true } } } }),
+  ]);
 
   const matterScope = permissionScope(user, "matters");
   const matterReports = matterScope === "Team"

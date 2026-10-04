@@ -1,6 +1,7 @@
 import { ActionError } from "./errors.ts";
 import { MODULES } from "./permissions.ts";
 import { validateClientSteps } from "./client-tracker.ts";
+import { DEFAULT_AVAILABILITY, validateAvailability } from "./availability.ts";
 import { DEFAULT_PORTAL_SETTINGS, validatePortalSettings } from "./portal-settings.ts";
 
 export const SETUP_SECTIONS = [
@@ -17,6 +18,7 @@ export const SETUP_SECTIONS = [
   { key: "hrChecklist", label: "HR checklist and onboarding", href: "/settings/hr-checklist", ownerOnly: false },
   { key: "filingStructure", label: "Filing structure and locations", href: "/settings/filing-structure", ownerOnly: false },
   { key: "clientPortal", label: "Client portal settings", href: "/settings/client-portal", ownerOnly: true },
+  { key: "availability", label: "Client booking availability", href: "/settings/availability", ownerOnly: false },
   { key: "integrations", label: "Integration preferences", href: "/settings/integrations/preferences", ownerOnly: true },
   { key: "setupRights", label: "Supervisor setup rights", href: "/settings/supervisor-setup-rights", ownerOnly: true },
 ] as const;
@@ -110,6 +112,7 @@ export function createInitialSetupConfig(firmName: string): SetupConfig {
       folders: ["Correspondence", "Pleadings", "Evidence", "Court documents", "Accounts"],
     },
     clientPortal: structuredClone(DEFAULT_PORTAL_SETTINGS),
+    availability: structuredClone(DEFAULT_AVAILABILITY),
     integrations: {
       calendarSyncEnabled: false,
       accountingEnabled: false,
@@ -322,6 +325,9 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
     }
     case "clientPortal":
       validatePortalSettings(value);
+      break;
+    case "availability":
+      validateAvailability(value);
       break;
     case "integrations": {
       const data = object(value, section);

@@ -62,3 +62,24 @@ The Module J migration adds separate client portal accounts, invitations, sessio
 The owner-only `/settings/integrations` page can connect or disconnect a firm Google Calendar or Microsoft 365 account using OAuth authorization code flow with PKCE, one-time expiring state, same-browser state cookie, verified account email, firm-bound database records, and AES-256-GCM encrypted access/refresh tokens. Connections and failures are audited. The page displays configured/connected state, account email and granted scopes; secrets and tokens are never displayed. Configure `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` or `MICROSOFT_OAUTH_CLIENT_ID` and `MICROSOFT_OAUTH_CLIENT_SECRET` as private server-side environment variables. Register these exact HTTPS callback URLs in the provider console (replace the origin with `APP_URL`): `/api/integrations/oauth/google-calendar/callback` and `/api/integrations/oauth/microsoft-365-calendar/callback`. Both providers require `SENSITIVE_DATA_ENCRYPTION_KEY`. Disconnect removes Parlia’s stored tokens but does not revoke the external provider grant; revoke that separately in the provider account settings if needed.
 
 This module connects provider accounts only; it does not synchronize, read, create, update, or delete calendar events. Setup Centre integration switches are preferences only and do not imply a working connection. Event synchronization needs a separate, explicit policy for direction, selected calendars, conflict handling, and deletion behavior. The Module K migration adds firm-scoped connections and short-lived OAuth state records with same-firm foreign keys. No credentials or connections are seeded. Configure private database URLs and apply the ordered migrations before using the integration page; do not run migrations against a live database until its private connection variables are configured.
+
+## Client portal additions (firm address, tracker, documents, invoices, notifications)
+
+- Each firm has a portal address at `APP_URL/portal/FIRM-SLUG` with Client login, Request access and Request a consultation. Settings live in Setup > Client portal settings (owner only).
+- Client matter page: "Where is my matter" tracker, Documents for you, Invoices with proof of payment, Meetings, and a "Needs your attention" list. Notification emails never contain matter details.
+- Documents, invoice PDFs and proof of payment are stored as HTTPS link references only. There is no Clio / OneDrive / SharePoint integration, no real file upload and no malware scan yet.
+- Reminders run from `/api/cron/client-reminders` (daily 06:00 via `vercel.json`). Set `CRON_SECRET` in Vercel or the route returns 401.
+
+## Teams meetings, client booking, call timer and email buttons
+
+- Calendar > Add an event > More: "Create a Teams meeting" uses the firm's connected Microsoft 365 account (owner connects it in Setup > Connections). Meetings are created in the connected account's calendar. "Update my Teams meetings from Outlook" is a manual pull of time, title and deletions; it is not a live two-way sync.
+- Microsoft app credentials: set `MICROSOFT_OAUTH_CLIENT_ID` and `MICROSOFT_OAUTH_CLIENT_SECRET` (`MS_CLIENT_ID` and `MS_CLIENT_SECRET` are accepted as aliases). The app registration needs the delegated permissions `Calendars.ReadWrite`, `User.Read` and `offline_access`, and the redirect URI shown in Setup > Connections. Online meetings are created through the calendar event, so no extra Teams permission is needed for work or school accounts.
+- Setup > Client booking availability: clients book on their matter page with the matter's responsible person. Slots are generated in South African time (UTC+2) and skip anything already on that person's calendar. Clients can cancel their own bookings outside the notice window.
+- Matter page: a call timer (one running timer per person) and an Email the client form. Email buttons offer Send from Parlia, Open in my email, Open in Outlook and Copy text. "Prepare invitation to send from my own email" creates the single-use link without sending it.
+- Time entries are recorded only; they are not billed automatically.
+
+## Deploying updates
+
+1. Add or check Vercel variables: `APP_URL`, `DATABASE_URL`, `DIRECT_URL`, `OWNER_CODE_HMAC_KEY`, `SENSITIVE_DATA_ENCRYPTION_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `SUPPORT_EMAIL`, `CRON_SECRET`, and the Microsoft pair when connecting Teams.
+2. Apply database migrations once from your computer with the real `DIRECT_URL` set for that terminal session only: `npx prisma migrate deploy`.
+3. Redeploy on Vercel and confirm the Resend sender domain is verified.

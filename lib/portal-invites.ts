@@ -1,6 +1,7 @@
 import { getDb } from "@/lib/db";
 import { getFirmPortalContext, sendBrandedEmail } from "@/lib/firm-portal";
 import { hashToken, randomToken } from "@/lib/security";
+import { appUrl } from "@/lib/email";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -12,6 +13,7 @@ export async function createPortalInvitation(db: Db, params: {
   email: string;
   name: string;
   replacePending: boolean;
+  deliver?: boolean;
 }) {
   const { settings } = await getFirmPortalContext(params.firmId);
   const token = randomToken();
@@ -31,10 +33,14 @@ export async function createPortalInvitation(db: Db, params: {
     });
   });
   if (!invitation) return null;
+  const path = `/client/invitation?token=${encodeURIComponent(token)}`;
+  if (params.deliver === false) {
+    return { ...invitation, draft: { subject: "You are invited to our client portal", body: [`Hello ${params.name},`, settings.invitationWording, `Use this link to set up your access. It works once and expires in ${settings.inviteExpiryDays} days:`, appUrl(path)].join("\n\n") } };
+  }
   try {
     await sendBrandedEmail(params.firmId, params.email, "You are invited to our client portal", "You are invited",
       [`Hello ${params.name},`, settings.invitationWording, `This link works once and expires in ${settings.inviteExpiryDays} days.`],
-      { label: "Set up my portal access", path: `/client/invitation?token=${encodeURIComponent(token)}` });
+      { label: "Set up my portal access", path });
   } catch (error) {
     await db.clientPortalInvitation.deleteMany({ where: { id: invitation.id, firmId: params.firmId, acceptedAt: null } });
     throw error;
