@@ -42,3 +42,9 @@ The equipment register records serials, condition reports, assignee declarations
 The owner assigns attendance View/Edit access and Own/Team/Firm report scope using Settings → Permissions and role templates. Edit enables an employee’s own clock and duty actions; report visibility is still limited by the assigned attendance scope and direct-report relationships. Location management remains owner-only regardless of role. All attendance and geofence mutations and CSV report exports are audited; CSV reports omit exact GPS coordinates. Attendance data is for operational accountability only and is not payroll, pay calculation, or a time-sheet system. Firm workdays use the published country setting (South African time for the South Africa default, otherwise UTC); recorded timestamps remain in UTC.
 
 The Module H migration adds tenant-composite foreign keys among attendance days, staff, locations and duty records, and backfills the attendance permission for existing role templates and Setup Centre drafts. Apply it with the ordered Prisma migrations after configuring private database URLs. No sample locations, staff attendance, or client records are seeded.
+
+## Module I: reports
+
+`/reports` includes quiet-matter reporting for active matters with no recorded meaningful activity beyond the firm owner’s configurable threshold (default 30 days). The report and CSV export use the narrower of the signed-in user’s Reports and Matters permissions (Own/Team/Firm), and team scope follows active direct-supervisor assignments. CSV export is audited and protects spreadsheet formula cells. A user may request an on-demand quiet-matter digest email to their own signed-in account address; it is not a scheduled email. Email requires configured Resend credentials and a verified sender. Client matter details are included only for matters the current user can view.
+
+The Module I migration adds the firm-scoped report-threshold setting. No report data is seeded.

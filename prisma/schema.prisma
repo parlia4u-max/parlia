@@ -111,6 +111,7 @@ model Firm {
   passwordVaultEntries PasswordVaultEntry[]
   attendanceLocations AttendanceLocation[]
   attendanceDays AttendanceDay[]
+  reportSettings FirmReportSettings?
 }
 
 model SetupConfiguration {
@@ -568,6 +569,13 @@ model AttendanceEvent {
   @@index([firmId, dayId, occurredAt])
   @@index([firmId, locationId, occurredAt])
   @@index([firmId, dutyId, occurredAt])
+}
+
+model FirmReportSettings {
+  firmId          String   @id
+  firm            Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  quietMatterDays Int      @default(30)
+  updatedAt       DateTime @updatedAt
 }
 
 model PhysicalFile {
