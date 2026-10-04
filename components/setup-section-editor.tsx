@@ -4,6 +4,7 @@ import { useState } from "react";
 import { saveSetupDraft } from "@/app/actions/setup";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MODULES, MODULE_LABELS } from "@/lib/permissions";
+import { defaultClientSteps } from "@/lib/client-tracker";
 import { PORTAL_NOTIFICATION_KEYS } from "@/lib/portal-settings";
 import { STAGE_KINDS, TASK_CATEGORIES, type SetupSectionKey } from "@/lib/setup-config";
 
@@ -237,7 +238,39 @@ export function SetupSectionEditor({
                 ))}
                 <button className="button-secondary" onClick={() => updateRow(key, index, { ...row, [nested]: isMatter ? [...normalizedStages(row[nested]), { name: "", kind: "A", tasks: [] }] : [...list(row[nested]), ""] })} type="button">Add {nested.slice(0, -1)}</button>
               </div>
-            </fieldset>
+                              {isMatter ? (() => {
+                                const stageNames = normalizedStages(row.stages).map((stage) => String(stage.name)).filter(Boolean);
+                                const steps = list(row.clientSteps);
+                                const setSteps = (next: SetupValue[]) => updateRow(key, index, { ...row, clientSteps: next });
+                                return (
+                                  <div className="setup-nested-list">
+                                    <h4>Steps the client sees</h4>
+                                    <p className="foundation-muted">Group your internal stages into a few plain steps. The client tracker moves automatically when the matter moves to a stage in the next step.</p>
+                                    {steps.map((step, stepIndex) => (
+                                      <div className="setup-edit-card" key={`client-step-${stepIndex}`}>
+                                        <TextField label={`Step ${stepIndex + 1} name`} value={step.name} maxLength={80} onChange={(next) => setSteps(steps.map((item, i) => i === stepIndex ? { ...item, name: next } : item))} />
+                                        <TextField label="One-sentence explanation" value={step.explanation} maxLength={300} onChange={(next) => setSteps(steps.map((item, i) => i === stepIndex ? { ...item, explanation: next } : item))} />
+                                        <div className="setup-rights-grid">
+                                          {stageNames.map((stageName) => (
+                                            <label className="setup-checkbox-field" key={stageName}>
+                                              <input type="checkbox" checked={list(step.stages).includes(stageName)} onChange={(event) => setSteps(steps.map((item, i) => {
+                                                const others = list(item.stages).filter((entry) => entry !== stageName);
+                                                if (i === stepIndex) return { ...item, stages: event.target.checked ? [...others, stageName] : others };
+                                                return event.target.checked ? { ...item, stages: others } : item;
+                                              }))} />
+                                              <span>{stageName}</span>
+                                            </label>
+                                          ))}
+                                        </div>
+                                        <RemoveButton label={`Remove client step ${stepIndex + 1}`} onClick={() => setSteps(steps.filter((_, i) => i !== stepIndex))} />
+                                      </div>
+                                    ))}
+                                    <button className="button-secondary" type="button" onClick={() => setSteps([...steps, { name: "", explanation: "", stages: [] }])}>Add client step</button>
+                                    <button className="button-secondary" type="button" onClick={() => setSteps(defaultClientSteps(normalizedStages(row.stages).filter((stage) => stage.name)))}>Use default steps</button>
+                                  </div>
+                                );
+                              })() : null}
+                            </fieldset>
           ))}
           <button className="button-secondary" onClick={() => setField(key, [...list(value), { name: "", [nested]: [] }])} type="button">Add {label.slice(0, -1).toLowerCase()}</button>
         </div>

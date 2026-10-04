@@ -89,6 +89,12 @@ enum PortalAccessOutcome {
   Consultation
 }
 
+enum PossibleBillingStatus {
+  Pending
+  Confirmed
+  Declined
+}
+
 enum IntegrationProvider {
   GoogleCalendar
   Microsoft365Calendar
@@ -99,6 +105,7 @@ model Firm {
   name            String
   slug            String?          @unique
   consultationRequests ConsultationRequest[]
+  possibleBillings PossibleBilling[]
   portalAccessRequests PortalAccessRequest[]
   staffSeatLimit  Int?
   createdAt       DateTime         @default(now())
@@ -366,6 +373,9 @@ model Matter {
   clientName        String
   clientSurname     String
   clientEmail       String?
+  clientStepOverride String?
+  clientStepEstimates Json?
+  possibleBillings  PossibleBilling[]
   matterType        String
   stage             String
   stageKind         MatterStageKind @default(A)
@@ -725,6 +735,7 @@ model ClientPortalUpdate {
   matter      Matter    @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
   createdById String
   createdBy   User      @relation("ClientUpdateCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  possibleBillings PossibleBilling[]
   title       String
   body        String
   sharedAt    DateTime?
@@ -1257,4 +1268,23 @@ model PortalAccessRequest {
   @@index([firmId, createdAt])
   @@index([firmId, ipHash, createdAt])
   @@index([firmId, emailHash, createdAt])
+}
+
+model PossibleBilling {
+  id          String                @id @default(cuid())
+  firmId      String
+  firm        Firm                  @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId    String
+  matter      Matter                @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  updateId    String?
+  update      ClientPortalUpdate?   @relation(fields: [updateId, firmId], references: [id, firmId], onDelete: NoAction)
+  description String
+  amount      Int
+  status      PossibleBillingStatus @default(Pending)
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime              @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, matterId, status])
 }

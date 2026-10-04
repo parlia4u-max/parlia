@@ -8,6 +8,8 @@ import { getDb } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { canAccessRecord } from "@/lib/matter-rules";
 import { validatedDocumentReference } from "@/lib/client-portal-rules";
+import { portalSettingsFromConfig } from "@/lib/portal-settings";
+import { clientStepsForType } from "@/lib/client-tracker";
 
 function text(form: FormData, key: string, label: string, max: number) {
   const value = form.get(key);
@@ -57,11 +59,16 @@ export async function createClientPortalUpdate(_state: string | null, form: Form
       where: { firmId: user.firmId, matterId: matter.id, revokedAt: null, client: { active: true } },
       select: { id: true },
     })) throw new ActionError("Connect an active client portal account to this matter before sharing an update.");
+    const setup = await db.setupConfiguration.findUnique({ where: { firmId: user.firmId }, select: { published: true } });
+    const fee = portalSettingsFromConfig(setup?.published);
     await db.$transaction(async (tx) => {
       const created = await tx.clientPortalUpdate.create({
         data: { firmId: user.firmId, matterId: matter.id, createdById: user.id, title, body, sharedAt: shareNow ? new Date() : null },
         select: { id: true },
       });
+      if (shareNow && fee.updateFeeEnabled && fee.updateFeeAmount > 0) {
+        await tx.possibleBilling.create({ data: { firmId: user.firmId, matterId: matter.id, updateId: created.id, description: `Client update: ${title}`, amount: fee.updateFeeAmount } });
+      }
       await tx.auditLog.create({
         data: { firmId: user.firmId, actorId: user.id, action: shareNow ? "client_portal.update_shared" : "client_portal.update_drafted", entityType: "client-portal-update", entityId: created.id, details: { matterId: matter.id } },
       });
@@ -155,6 +162,57 @@ export async function reviewClientDocumentReference(_state: string | null, form:
       return `Review status was saved, but the client notification failed: ${actionErrorMessage(error)}`;
     }
     return `success:Submission ${decision.toLowerCase()} and client notified.`;
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+}
+
+export async function setClientStep(_state: string | null, form: FormData): Promise<string | null> {
+  try {
+    const matterId = text(form, "matterId", "Matter", 80);
+    const { user, matter, db } = await authorizedMatterEditor(matterId);
+    const step = optionalText(form, "step", "Client step", 80);
+    const full = await db.matter.findFirstOrThrow({ where: { id: matter.id, firmId: user.firmId }, select: { matterType: true } });
+    const setup = await db.setupConfiguration.findUnique({ where: { firmId: user.firmId }, select: { published: true } });
+    const published = setup?.published && typeof setup.published === "object" ? setup.published as Record<string, unknown> : {};
+    const type = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === full.matterType);
+    const stages = Array.isArray((type as Record<string, unknown> | undefined)?.stages) ? ((type as Record<string, unknown>).stages as { name: string; kind: string }[]) : [];
+    const steps = clientStepsForType(type, stages);
+    if (step && !steps.some((item) => item.name === step)) throw new ActionError("Choose one of the configured client steps.");
+    const estimates: Record<string, string> = {};
+    for (const item of steps) {
+      const value = form.get(`estimate:${item.name}`);
+      if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) estimates[item.name] = value;
+    }
+    await db.$transaction(async (tx) => {
+      await tx.matter.update({ where: { id_firmId: { id: matter.id, firmId: user.firmId } }, data: { clientStepOverride: step, clientStepEstimates: estimates } });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "client_portal.step_set", entityType: "matter", entityId: matter.id, details: { step } } });
+    });
+    revalidatePath(`/matters/${matter.id}`);
+    revalidatePath(`/client/matters/${matter.id}`);
+    return "success:Client tracker saved.";
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+}
+
+export async function decidePossibleBilling(_state: string | null, form: FormData): Promise<string | null> {
+  try {
+    const matterId = text(form, "matterId", "Matter", 80);
+    const id = text(form, "billingId", "Billing entry", 80);
+    const decision = text(form, "decision", "Decision", 10);
+    if (decision !== "Confirmed" && decision !== "Declined") throw new ActionError("Choose confirm or decline.");
+    const { user, matter, db } = await authorizedMatterEditor(matterId);
+    await db.$transaction(async (tx) => {
+      const changed = await tx.possibleBilling.updateMany({
+        where: { id, firmId: user.firmId, matterId: matter.id, status: "Pending" },
+        data: { status: decision, decidedById: user.id, decidedAt: new Date() },
+      });
+      if (changed.count !== 1) throw new ActionError("This entry was already decided.");
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: `client_portal.billing_${decision.toLowerCase()}`, entityType: "possible-billing", entityId: id, details: { matterId: matter.id } } });
+    });
+    revalidatePath(`/matters/${matter.id}`);
+    return `success:Entry ${decision.toLowerCase()}.`;
   } catch (error) {
     return actionErrorMessage(error);
   }

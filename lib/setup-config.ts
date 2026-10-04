@@ -1,5 +1,6 @@
 import { ActionError } from "./errors.ts";
 import { MODULES } from "./permissions.ts";
+import { validateClientSteps } from "./client-tracker.ts";
 import { DEFAULT_PORTAL_SETTINGS, validatePortalSettings } from "./portal-settings.ts";
 
 export const SETUP_SECTIONS = [
@@ -207,6 +208,7 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
             if (task.dueInDays !== undefined) positiveNumber(task.dueInDays, "Stage task due-in days", 3650);
           }
         }
+        validateClientSteps(matterType.clientSteps, array(matterType.stages, "Matter stages", 100).map((item) => typeof item === "string" ? item : String(object(item, "Stage").name)), (message) => { throw new ActionError(message); });
         if (new Set(stageNames).size !== stageNames.length) throw new ActionError(`Matter stages for ${String(matterType.name)} must be unique.`);
       }
       if (new Set(typeNames).size !== typeNames.length) throw new ActionError("Matter type names must be unique.");

@@ -10,10 +10,11 @@ import {
   updateMatterStatus,
   updateTaskAssignment,
 } from "@/app/actions/matters";
-import { createClientPortalUpdate, revokeClientMatterAccess } from "@/app/actions/client-portal";
+import { createClientPortalUpdate, decidePossibleBilling, revokeClientMatterAccess, setClientStep } from "@/app/actions/client-portal";
 import { cancelPortalInvitation, inviteClientToMatter, sendPortalInvitation } from "@/app/actions/client-auth";
 import { portalInviteStatus } from "@/lib/portal-status";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
+import { clientStepsForType, computeTracker } from "@/lib/client-tracker";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MatterFieldForm, MatterStageForm, TaskCategories, TaskCompleteForm } from "@/components/matter-forms";
 import { FoundationHeader } from "@/components/foundation";
@@ -22,9 +23,10 @@ import { hasPermission, permissionScope, requirePermission } from "@/lib/auth";
 import { matterTypesFromConfig, taskCategoriesFromConfig } from "@/lib/matter-config";
 import { taskUrgency, type UrgencyBand } from "@/lib/matter-rules";
 
-export default async function MatterDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MatterDetailsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ stage?: string }> }) {
   const user = await requirePermission("matters");
   const { id } = await params;
+  const { stage: stageQuery } = await searchParams;
   const db = getDb();
   const matter = await db.matter.findFirst({
     where: { id, firmId: user.firmId },
@@ -46,6 +48,8 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
       onHoldReason: true,
       reviewDate: true,
       lastActivityAt: true,
+      clientStepOverride: true,
+      clientStepEstimates: true,
       createdAt: true,
       responsible: { select: { name: true, email: true } },
       createdBy: { select: { name: true } },
@@ -97,7 +101,7 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
   const urgencyBands = Array.isArray(published.urgencyBands) ? published.urgencyBands as UrgencyBand[] : [];
   const categories = taskCategoriesFromConfig(configuration?.published);
   const portalSettings = portalSettingsFromConfig(configuration?.published);
-  const [portalAccess, portalUpdates, latestInvitation, removedAccessCount] = canEditMatter ? await Promise.all([
+  const [portalAccess, portalUpdates, latestInvitation, removedAccessCount, pendingBillings] = canEditMatter ? await Promise.all([
     db.clientMatterAccess.findMany({
       where: { firmId: user.firmId, matterId: matter.id, revokedAt: null },
       include: { client: { select: { id: true, name: true, email: true, active: true } } },
@@ -111,7 +115,12 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
     }),
     db.clientPortalInvitation.findFirst({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true, expiresAt: true, acceptedAt: true } }),
     db.clientMatterAccess.count({ where: { firmId: user.firmId, matterId: matter.id, revokedAt: { not: null } } }),
-  ]) : [[], [], null, 0] as const;
+    db.possibleBilling.findMany({ where: { firmId: user.firmId, matterId: matter.id, status: "Pending" }, orderBy: { createdAt: "desc" }, take: 50 }),
+  ]) : [[], [], null, 0, []] as const;
+  const rawType = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === matter.matterType);
+  const clientSteps = clientStepsForType(rawType, stages);
+  const trackerNow = computeTracker({ steps: clientSteps, currentStage: matter.stage, override: matter.clientStepOverride, estimates: matter.clientStepEstimates, showEstimates: true });
+  const estimates = matter.clientStepEstimates && typeof matter.clientStepEstimates === "object" && !Array.isArray(matter.clientStepEstimates) ? matter.clientStepEstimates as Record<string, string> : {};
   const portalStatus = portalInviteStatus({ activeAccessCount: portalAccess.filter((access) => access.client.active).length, removedAccessCount, latestInvitation, reminderDays: portalSettings.inviteReminderDays });
 
   return (
@@ -167,6 +176,42 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
             </ActionForm>
           </article>
         ))}</div> : <p>No client account is connected to this matter.</p>}
+        {stageQuery === "changed" ? <p className="foundation-notice" role="status">The matter stage moved. Write a client update? Open "More" below and share it so the client sees what changed.</p> : null}
+        {pendingBillings.length ? <div>
+          <h3>Possible billing to confirm</h3>
+          {pendingBillings.map((entry) => (
+            <article className="todo-card" key={entry.id}>
+              <p>{entry.description} · R{entry.amount}</p>
+              <div className="work-actions">
+                {["Confirmed", "Declined"].map((decision) => (
+                  <ActionForm key={decision} action={decidePossibleBilling}>
+                    <input type="hidden" name="matterId" value={matter.id} />
+                    <input type="hidden" name="billingId" value={entry.id} />
+                    <input type="hidden" name="decision" value={decision} />
+                    <SubmitButton className={decision === "Declined" ? "button-secondary" : undefined}>{decision === "Confirmed" ? "Confirm" : "Decline"}</SubmitButton>
+                  </ActionForm>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div> : null}
+        {trackerNow ? <details>
+          <summary>More · client tracker step</summary>
+          <p className="foundation-muted">The tracker moves by itself when you change the stage. Use this only to show a different step to the client.</p>
+          <ActionForm action={setClientStep} className="foundation-form">
+            <input type="hidden" name="matterId" value={matter.id} />
+            <label className="foundation-field"><span>Step shown to the client</span>
+              <select name="step" defaultValue={matter.clientStepOverride ?? ""}>
+                <option value="">Follow the stage automatically</option>
+                {clientSteps.map((step) => <option key={step.name} value={step.name}>{step.name}</option>)}
+              </select>
+            </label>
+            {portalSettings.estimatedDatesEnabled ? clientSteps.map((step) => (
+              <label className="foundation-field" key={step.name}><span>Estimated date for {step.name}</span><input type="date" name={`estimate:${step.name}`} defaultValue={estimates[step.name] ?? ""} /></label>
+            )) : null}
+            <SubmitButton>Save tracker</SubmitButton>
+          </ActionForm>
+        </details> : null}
         <details>
           <summary>More · prepare a portal update</summary>
           <ActionForm action={createClientPortalUpdate} className="foundation-form">

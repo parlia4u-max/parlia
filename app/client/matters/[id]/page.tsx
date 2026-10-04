@@ -6,6 +6,9 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { FoundationHeader } from "@/components/foundation";
 import { getCurrentClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
+import { ClientTracker } from "@/components/client-tracker";
+import { clientStepsForType, computeTracker } from "@/lib/client-tracker";
+import { portalSettingsFromConfig } from "@/lib/portal-settings";
 
 export default async function ClientMatterPage({ params }: { params: Promise<{ id: string }> }) {
   const client = await getCurrentClient();
@@ -17,7 +20,7 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
       matter: {
         include: {
           responsible: { select: { name: true } },
-          clientPortalUpdates: { where: { firmId: client.firmId, sharedAt: { not: null } }, orderBy: { sharedAt: "desc" }, take: 100 },
+          clientPortalUpdates: { where: { firmId: client.firmId, sharedAt: { not: null } }, orderBy: { sharedAt: "desc" }, take: 100, include: { createdBy: { select: { name: true } } } },
           clientDocumentReferences: { where: { firmId: client.firmId, clientId: client.id }, orderBy: { submittedAt: "desc" }, take: 100 },
         },
       },
@@ -25,6 +28,17 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
   });
   if (!access || access.matter.firmId !== client.firmId) notFound();
   const matter = access.matter;
+  const setup = await getDb().setupConfiguration.findUnique({ where: { firmId: client.firmId }, select: { published: true } });
+  const published = setup?.published && typeof setup.published === "object" ? setup.published as Record<string, unknown> : {};
+  const type = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === matter.matterType);
+  const typeStages = Array.isArray((type as Record<string, unknown> | undefined)?.stages) ? (type as { stages: { name: string; kind: string }[] }).stages : [];
+  const tracker = computeTracker({
+    steps: clientStepsForType(type, typeStages),
+    currentStage: matter.stage,
+    override: matter.clientStepOverride,
+    estimates: matter.clientStepEstimates,
+    showEstimates: portalSettingsFromConfig(setup?.published).estimatedDatesEnabled,
+  });
   return (
     <section className="foundation-page">
       <FoundationHeader title={matter.matterNumber} firm={client.firm.name} />
@@ -38,6 +52,7 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
         <p>Responsible person: {matter.responsible.name}</p>
         <p className="foundation-muted">This view contains only information the firm chose to share with you.</p>
       </section>
+      {tracker ? <ClientTracker steps={tracker} updates={matter.clientPortalUpdates.map((update) => ({ id: update.id, title: update.title, body: update.body, sharedAt: update.sharedAt, author: update.createdBy.name }))} /> : null}
       <section className="foundation-panel">
         <h2>Shared updates</h2>
         {matter.clientPortalUpdates.length ? <div className="matter-timeline">{matter.clientPortalUpdates.map((update) => (

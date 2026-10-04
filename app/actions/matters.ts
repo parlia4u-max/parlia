@@ -278,6 +278,7 @@ export async function changeMatterStage(_state: string | null, formData: FormDat
           onHoldReason: stage.kind === "C" || stage.kind === "X" ? null : undefined,
           reviewDate: stage.kind === "C" || stage.kind === "X" ? null : undefined,
           lastActivityAt: now,
+          clientStepOverride: null,
         },
       });
       const taskData = stage.tasks.map((configuredTask) => ({
@@ -317,7 +318,7 @@ export async function changeMatterStage(_state: string | null, formData: FormDat
   } catch (error) {
     return actionErrorMessage(error);
   }
-  redirect(`/matters/${matterId}`);
+  redirect(`/matters/${matterId}?stage=changed`);
 }
 
 export async function updateMatterStatus(_state: string | null, formData: FormData): Promise<string | null> {
