@@ -53,6 +53,25 @@ function NumberField({
   );
 }
 
+function NullableNumberField({
+  label,
+  value,
+  onChange,
+  max = 10000,
+}: {
+  label: string;
+  value: unknown;
+  onChange: (value: number | null) => void;
+  max?: number;
+}) {
+  return (
+    <label className="foundation-field">
+      <span>{label}</span>
+      <input type="number" min={0} max={max} step={1} value={typeof value === "number" ? value : ""} onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))} />
+    </label>
+  );
+}
+
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
   return <button aria-label={label} className="button-secondary setup-remove-button" onClick={onClick} type="button">Remove</button>;
 }
@@ -288,7 +307,10 @@ export function SetupSectionEditor({
             <NumberField label="Sick leave days per cycle" value={value.sickLeaveDaysPerCycle} max={1000} onChange={(next) => setField("sickLeaveDaysPerCycle", next)} />
             <NumberField label="Leave cycle length (months)" value={value.cycleMonths} max={1000} onChange={(next) => setField("cycleMonths", next)} />
             <NumberField label="Carry-over days" value={value.carryOverDays} max={1000} onChange={(next) => setField("carryOverDays", next)} />
+            <NullableNumberField label="Study leave days (unset disables study leave)" value={value.studyLeaveDays} max={1000} onChange={(next) => setField("studyLeaveDays", next)} />
+            <NullableNumberField label="Family-responsibility leave days (unset disables this type)" value={value.familyResponsibilityDays} max={1000} onChange={(next) => setField("familyResponsibilityDays", next)} />
           </div>
+          <p className="foundation-muted">Leave allowances are firm-configured policy, not legal advice. Study leave starts unset; requests of an unset leave type are disabled.</p>
           <div className="setup-list-editor">
             <h3>Leave form fields</h3>
             {list(value.formFields).map((entry, index) => (
@@ -298,6 +320,20 @@ export function SetupSectionEditor({
               </div>
             ))}
             <button className="button-secondary" onClick={() => setField("formFields", [...list(value.formFields), ""])} type="button">Add leave form field</button>
+          </div>
+          <div className="setup-list-editor">
+            <h3>Brand-aware PDF templates</h3>
+            {list(value.leaveForms).map((row, index) => (
+              <fieldset className="setup-edit-card" key={`leave-form-${index}`}>
+                <legend>Template {row.id}</legend>
+                <div className="setup-field-grid">
+                  <TextField label="Form title" value={row.title} maxLength={120} onChange={(next) => updateRow("leaveForms", index, { ...row, title: next })} />
+                  <TextField label="Accent colour" type="color" value={row.accentColor} onChange={(next) => updateRow("leaveForms", index, { ...row, accentColor: next })} />
+                </div>
+                <TextField label="Footer text" value={row.footer} maxLength={240} onChange={(next) => updateRow("leaveForms", index, { ...row, footer: next })} />
+              </fieldset>
+            ))}
+            <p className="foundation-muted">PDF output uses the published firm name, address, configured template styling and saved request details.</p>
           </div>
         </>
       );

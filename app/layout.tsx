@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "@/components/app-shell-styles.css";
 import { AppShell, type NavigationAccess } from "@/components/app-shell";
-import { getCurrentUser, hasPermission } from "@/lib/auth";
+import { getCurrentUser, hasPermission, permissionScope } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { SETUP_SECTIONS } from "@/lib/setup-config";
 
@@ -18,7 +18,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const currentUser = await getCurrentUser();
-  let navigationAccess: NavigationAccess = { isOwner: false, canViewPeople: false, canViewMatters: false, canViewTasks: false, canViewCalendar: false, setupHrefs: [] };
+  let navigationAccess: NavigationAccess = { isOwner: false, canViewPeople: false, canManagePeople: false, canViewMatters: false, canViewTasks: false, canViewCalendar: false, setupHrefs: [] };
   if (currentUser) {
     const setupHrefs: string[] = [];
     if (currentUser.isOwner) {
@@ -46,6 +46,7 @@ export default async function RootLayout({
     navigationAccess = {
       isOwner: currentUser.isOwner,
       canViewPeople: hasPermission(currentUser, "people"),
+      canManagePeople: currentUser.isOwner || hasPermission(currentUser, "people", "Edit") && permissionScope(currentUser, "people") !== "Own",
       canViewMatters: hasPermission(currentUser, "matters"),
       canViewTasks: hasPermission(currentUser, "tasks"),
       canViewCalendar: hasPermission(currentUser, "calendar"),

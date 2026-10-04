@@ -81,7 +81,14 @@ export function createInitialSetupConfig(firmName: string): SetupConfig {
       sickLeaveDaysPerCycle: 30,
       cycleMonths: 36,
       carryOverDays: 5,
+      studyLeaveDays: null,
+      familyResponsibilityDays: null,
       formFields: ["Leave type", "Start date", "End date", "Reason", "Covering colleague"],
+      leaveForms: [
+        { id: "A", title: "Leave request", accentColor: "#325c4b", footer: "Confidential staff record" },
+        { id: "B", title: "Leave request and approval", accentColor: "#325c4b", footer: "Confidential staff record" },
+        { id: "C", title: "Leave record", accentColor: "#325c4b", footer: "Confidential staff record" },
+      ],
     },
     minutesTemplates: [
       { name: "Template A", sections: ["Attendees", "Purpose", "Discussion", "Decisions", "Actions"] },
@@ -265,19 +272,36 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
     case "leaveRules": {
       const data = object(value, section);
       for (const key of ["annualLeaveDays", "sickLeaveDaysPerCycle", "cycleMonths", "carryOverDays"]) positiveNumber(data[key], key, 1000);
+      for (const key of ["studyLeaveDays", "familyResponsibilityDays"]) {
+        if (data[key] !== null) positiveNumber(data[key], key, 1000);
+      }
+      if (!Array.isArray(data.leaveForms) || data.leaveForms.length !== 3) {
+        throw new ActionError("Configure exactly three leave form templates (A, B and C).");
+      }
+      for (const [index, item] of data.leaveForms.entries()) {
+        const row = object(item, "Leave form template");
+        if (row.id !== ["A", "B", "C"][index]) throw new ActionError("Leave form templates must remain A, B and C.");
+        text(row.title, "Leave form title", 120);
+        text(row.footer, "Leave form footer", 240);
+        if (!/^#[0-9a-f]{6}$/i.test(String(row.accentColor))) throw new ActionError("Leave form accent colors must use #RRGGBB format.");
+      }
       for (const field of array(data.formFields, "Leave form fields", 50)) {
         text(field, "Leave form field", 120);
         if (!String(field).trim()) throw new ActionError("Leave form fields cannot be blank.");
       }
       break;
     }
-    case "hrChecklist":
-      for (const item of array(value, "HR checklist")) {
+    case "hrChecklist": {
+      const entries = array(value, "HR checklist");
+      const names = entries.map((item) => {
         const row = object(item, "HR checklist item"); text(row.name, "Checklist item", 160);
         if (!String(row.name).trim()) throw new ActionError("Checklist item names cannot be blank.");
         if (typeof row.required !== "boolean") throw new ActionError("Checklist required must be true or false.");
-      }
+        return String(row.name).trim().toLocaleLowerCase();
+      });
+      if (new Set(names).size !== names.length) throw new ActionError("Onboarding checklist item names must be unique.");
       break;
+    }
     case "filingStructure": {
       const data = object(value, section);
       for (const item of array(data.locations, "Filing locations", 100)) {

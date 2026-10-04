@@ -44,6 +44,19 @@ enum MatterStageKind {
   X
 }
 
+enum LeaveType {
+  Annual
+  Sick
+  Study
+  FamilyResponsibility
+}
+
+enum LeaveRequestStatus {
+  Pending
+  Approved
+  Declined
+}
+
 model Firm {
   id              String           @id @default(cuid())
   name            String
@@ -78,6 +91,15 @@ model Firm {
   meetingActionItems TeamMeetingActionItem[]
   suggestions TeamSuggestion[]
   employeeVotes TeamEmployeeVote[]
+  leaveProofTasks LeaveProofTask[]
+  leaveRequests LeaveRequest[]
+  leaveHandovers LeaveTaskHandover[]
+  staffProfiles StaffProfile[]
+  hrDocuments HRDocument[]
+  equipmentAssets EquipmentAsset[]
+  equipmentAssignments EquipmentAssignment[]
+  onboardingChecklistItems OnboardingChecklistItem[]
+  passwordVaultEntries PasswordVaultEntry[]
 }
 
 model SetupConfiguration {
@@ -142,6 +164,20 @@ model User {
   submittedSuggestions TeamSuggestion[] @relation("SuggestionSubmitter")
   employeeVotesCast TeamEmployeeVote[] @relation("EmployeeVoteVoter")
   employeeVotesReceived TeamEmployeeVote[] @relation("EmployeeVoteNominee")
+  leaveRequests LeaveRequest[] @relation("LeaveRequester")
+  leaveApprovals LeaveRequest[] @relation("LeaveApprover")
+  leaveCovers LeaveRequest[] @relation("LeaveCover")
+  leaveReturns LeaveRequest[] @relation("LeaveReturner")
+  leaveHandoversAsOriginal LeaveTaskHandover[] @relation("LeaveOriginalAssignee")
+  leaveHandoversAsCover LeaveTaskHandover[] @relation("LeaveTaskCover")
+  staffProfile StaffProfile?
+  hrDocuments HRDocument[] @relation("HRDocumentSubject")
+  managedEquipment EquipmentAsset[] @relation("EquipmentAssignee")
+  equipmentAssignmentHistory EquipmentAssignment[]
+  equipmentAssignmentsMade EquipmentAsset[] @relation("EquipmentAssigner")
+  equipmentAssignmentActions EquipmentAssignment[] @relation("EquipmentAssignmentAssigner")
+  completedOnboardingItems OnboardingChecklistItem[]
+  vaultEntriesCreated PasswordVaultEntry[]
 
   @@unique([email])
   @@unique([id, firmId])
@@ -329,6 +365,8 @@ model Task {
   updatedAt       DateTime   @updatedAt
   convertedMessage TeamMessage? @relation("MessageTask")
   meetingActionItem TeamMeetingActionItem?
+  leaveHandovers LeaveTaskHandover[]
+  leaveProof LeaveProofTask?
 
   @@unique([id, firmId])
   @@index([firmId, assignedToId, status, dueAt])
@@ -500,6 +538,8 @@ model CalendarEvent {
   createdBy     User                  @relation("CalendarEventCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
   matterId      String?
   matter        Matter?               @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  leaveRequestId String?
+  leaveRequest  LeaveRequest?         @relation("LeaveCalendarEvent", fields: [leaveRequestId, firmId], references: [id, firmId], onDelete: Cascade)
   title         String
   description   String?
   startAt       DateTime
@@ -513,6 +553,7 @@ model CalendarEvent {
   updatedAt     DateTime              @updatedAt
 
   @@unique([id, firmId])
+  @@unique([leaveRequestId, firmId])
   @@index([firmId, ownerId, startAt])
   @@index([firmId, startAt, endAt])
   @@index([firmId, matterId, startAt])
@@ -694,4 +735,195 @@ model TeamEmployeeVote {
 
   @@unique([firmId, period, voterId])
   @@index([firmId, period, nomineeId])
+}
+
+model LeaveRequest {
+  id              String             @id @default(cuid())
+  firmId          String
+  firm            Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  requesterId     String
+  requester       User               @relation("LeaveRequester", fields: [requesterId, firmId], references: [id, firmId], onDelete: Cascade)
+  coverId         String?
+  cover           User?              @relation("LeaveCover", fields: [coverId, firmId], references: [id, firmId], onDelete: Restrict)
+  approvedById    String?
+  approvedBy      User?              @relation("LeaveApprover", fields: [approvedById, firmId], references: [id, firmId], onDelete: NoAction)
+  returnedById    String?
+  returnedBy      User?              @relation("LeaveReturner", fields: [returnedById, firmId], references: [id, firmId], onDelete: NoAction)
+  type            LeaveType
+  startDate       DateTime           @db.Date
+  endDate         DateTime           @db.Date
+  requestedDays   Int
+  reason          String
+  status          LeaveRequestStatus @default(Pending)
+  formTemplate    String             @default("A")
+  formSnapshot    Json
+  decisionNote    String?
+  submittedAt     DateTime           @default(now())
+  decidedAt       DateTime?
+  returnedAt      DateTime?
+  handovers       LeaveTaskHandover[]
+  proofTask       LeaveProofTask?
+  calendarEvent   CalendarEvent?     @relation("LeaveCalendarEvent")
+
+  @@unique([id, firmId])
+  @@index([firmId, requesterId, status, startDate])
+  @@index([firmId, status, startDate, endDate])
+}
+
+model LeaveTaskHandover {
+  id                 String       @id @default(cuid())
+  firmId             String
+  firm               Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  leaveRequestId     String
+  leaveRequest       LeaveRequest @relation(fields: [leaveRequestId, firmId], references: [id, firmId], onDelete: Cascade)
+  taskId             String
+  task               Task         @relation(fields: [taskId, firmId], references: [id, firmId], onDelete: Restrict)
+  originalAssigneeId String
+  originalAssignee   User         @relation("LeaveOriginalAssignee", fields: [originalAssigneeId, firmId], references: [id, firmId], onDelete: Restrict)
+  coverId            String
+  cover              User         @relation("LeaveTaskCover", fields: [coverId, firmId], references: [id, firmId], onDelete: Restrict)
+  taskSnapshot       Json
+  restoredAt         DateTime?
+
+  @@unique([leaveRequestId, taskId])
+  @@index([firmId, coverId, restoredAt])
+}
+
+model LeaveProofTask {
+  id             String       @id @default(cuid())
+  firmId         String
+  firm           Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  leaveRequestId String       @unique
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId, firmId], references: [id, firmId], onDelete: Cascade)
+  taskId         String       @unique
+  task           Task         @relation(fields: [taskId, firmId], references: [id, firmId], onDelete: Cascade)
+
+  @@unique([id, firmId])
+  @@unique([leaveRequestId, firmId])
+  @@unique([taskId, firmId])
+  @@index([firmId, leaveRequestId])
+}
+
+model StaffProfile {
+  id                  String   @id @default(cuid())
+  firmId              String
+  firm                Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User     @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  nextOfKinCiphertext String?
+  nextOfKinIv         String?
+  nextOfKinTag        String?
+  employmentStartDate DateTime? @db.Date
+  onboardingDueAt     DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  checklist           OnboardingChecklistItem[]
+
+  @@unique([userId, firmId])
+  @@unique([id, firmId])
+  @@index([firmId, onboardingDueAt])
+}
+
+model OnboardingChecklistItem {
+  id            String       @id @default(cuid())
+  firmId        String
+  firm          Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  profileId     String
+  profile       StaffProfile @relation(fields: [profileId, firmId], references: [id, firmId], onDelete: Cascade)
+  name          String
+  required      Boolean      @default(false)
+  completed     Boolean      @default(false)
+  completedById String?
+  completedBy   User?        @relation(fields: [completedById, firmId], references: [id, firmId], onDelete: NoAction)
+  completedAt   DateTime?
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([profileId, name])
+  @@index([firmId, profileId, completed])
+}
+
+model HRDocument {
+  id                    String   @id @default(cuid())
+  firmId                String
+  firm                  Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  subjectId             String
+  subject               User     @relation("HRDocumentSubject", fields: [subjectId, firmId], references: [id, firmId], onDelete: Cascade)
+  documentTypeHash      String
+  encryptedMetadata     String
+  metadataIv            String
+  metadataAuthTag       String
+  encryptedContent      String
+  contentIv             String
+  contentAuthTag        String
+  locked                Boolean  @default(true)
+  resubmissionRequested Boolean  @default(false)
+  submittedAt           DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([subjectId, documentTypeHash])
+  @@unique([id, firmId])
+  @@index([firmId, subjectId, documentTypeHash])
+}
+
+model EquipmentAsset {
+  id                String                @id @default(cuid())
+  firmId            String
+  firm              Firm                  @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  name              String
+  serialNumber      String
+  condition         String
+  assignedToId      String?
+  assignedTo        User?                 @relation("EquipmentAssignee", fields: [assignedToId, firmId], references: [id, firmId], onDelete: Restrict)
+  assignedById      String
+  assignedBy        User                  @relation("EquipmentAssigner", fields: [assignedById, firmId], references: [id, firmId], onDelete: Restrict)
+  signedDeclaration String
+  assignedAt        DateTime?
+  returnedAt        DateTime?
+  assignments       EquipmentAssignment[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@unique([id, firmId])
+  @@unique([firmId, serialNumber])
+  @@index([firmId, assignedToId, returnedAt])
+}
+
+model EquipmentAssignment {
+  id                String         @id @default(cuid())
+  firmId            String
+  firm              Firm           @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  equipmentId       String
+  equipment         EquipmentAsset @relation(fields: [equipmentId, firmId], references: [id, firmId], onDelete: Cascade)
+  userId            String
+  user              User           @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Restrict)
+  assignedById      String
+  assignedBy        User           @relation("EquipmentAssignmentAssigner", fields: [assignedById, firmId], references: [id, firmId], onDelete: Restrict)
+  conditionAtIssue  String
+  signedDeclaration String
+  assignedAt        DateTime       @default(now())
+  returnedAt        DateTime?
+  returnCondition   String?
+
+  @@unique([id, firmId])
+  @@index([firmId, equipmentId, assignedAt])
+  @@index([firmId, userId, returnedAt])
+}
+
+model PasswordVaultEntry {
+  id                String   @id @default(cuid())
+  firmId            String
+  firm              Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  encryptedMetadata String
+  metadataIv        String
+  metadataAuthTag   String
+  encryptedSecret   String
+  secretIv          String
+  secretAuthTag     String
+  createdById       String
+  createdBy         User     @relation(fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, createdAt])
 }

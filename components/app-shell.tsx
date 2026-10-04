@@ -22,6 +22,7 @@ type MenuGroup = {
 export type NavigationAccess = {
   isOwner: boolean;
   canViewPeople: boolean;
+  canManagePeople: boolean;
   canViewMatters: boolean;
   canViewTasks: boolean;
   canViewCalendar: boolean;
@@ -60,6 +61,10 @@ const menuGroups: MenuGroup[] = [
     label: "PEOPLE",
     items: [
       { label: "Staff", href: "/staff", icon: "people" },
+      { label: "Leave and HR", href: "/leave", icon: "leave" },
+      { label: "My HR record", href: "/people/hr", icon: "people" },
+      { label: "Equipment register", href: "/people/equipment", icon: "equipment" },
+      { label: "Password vault", href: "/people/password-vault", icon: "passwords" },
       { label: "Help Center", href: "/help", icon: "messages" },
     ],
   },
@@ -167,6 +172,9 @@ export function AppShell({ children, navigationAccess }: { children: React.React
       ...group,
       items: group.items.filter((item) => {
         if (item.href === "/staff") return navigationAccess.canViewPeople;
+        if (item.href === "/leave" || item.href === "/people/hr") return navigationAccess.canViewPeople;
+        if (item.href === "/people/equipment") return navigationAccess.canManagePeople;
+        if (item.href === "/people/password-vault") return navigationAccess.isOwner;
         if (item.href.startsWith("/team/")) return navigationAccess.canViewPeople;
         if (item.href === "/matters" || item.href === "/matters/board") return navigationAccess.canViewMatters;
         if (item.href === "/tasks") return navigationAccess.canViewTasks;
