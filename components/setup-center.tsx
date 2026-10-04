@@ -6,6 +6,8 @@ import { SetupSectionEditor } from "@/components/setup-section-editor";
 import { getSetupPageContext } from "@/lib/setup";
 import { SETUP_SECTIONS, type SetupSectionKey } from "@/lib/setup-config";
 import { getDb } from "@/lib/db";
+import { ensureFirmSlug } from "@/lib/firm-portal";
+import { appUrl } from "@/lib/email";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -17,6 +19,7 @@ export async function SetupSectionPage({ section }: { section: SetupSectionKey }
   const draft = asRecord(config.draft)[section];
   const published = asRecord(config.published)[section];
   const changed = JSON.stringify(draft) !== JSON.stringify(published);
+  const portalAddress = section === "clientPortal" ? appUrl(`/portal/${await ensureFirmSlug(firm.id)}`) : null;
   let supervisors: { id: string; name: string; email: string }[] = [];
   if (section === "setupRights" && user.isOwner) {
     const links = await getDb().supervisorLink.findMany({
@@ -41,6 +44,7 @@ export async function SetupSectionPage({ section }: { section: SetupSectionKey }
               : section === "setupRights"
                 ? "Grant active supervisors access to draft selected setup sections. Owners alone can publish, edit permissions, change integrations or grant setup rights."
                 : "Changes are saved to this firm’s draft only. They do not affect active settings until the owner publishes the complete setup."}</p>
+          {portalAddress ? <p className="foundation-intro">Your firm's portal address, to link from your website: <strong>{portalAddress}</strong></p> : null}
           <span className={`foundation-status${changed ? "" : " is-active"}`}>{changed ? "Draft differs from published" : "Draft matches published"}</span>
           <h2>Editing {changed ? "draft" : "published"} values</h2>
           <SetupSectionEditor section={section} initialValue={draft} supervisors={supervisors} />

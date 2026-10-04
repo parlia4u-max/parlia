@@ -1,5 +1,6 @@
 "use server";
 
+import { slugFromName } from "@/lib/portal-settings";
 import { redirect } from "next/navigation";
 import { ActionError, actionErrorMessage } from "@/lib/errors";
 import { audit, createSession, signOut } from "@/lib/auth";
@@ -74,6 +75,9 @@ export async function createOwner(_state: string | null, formData: FormData): Pr
     const codeHash = hashVerificationCode(code);
     await db.$transaction(async (tx) => {
       const firm = await tx.firm.create({ data: { name: firmName } });
+      const baseSlug = slugFromName(firmName);
+      const slugTaken = await tx.firm.findUnique({ where: { slug: baseSlug }, select: { id: true } });
+      await tx.firm.update({ where: { id: firm.id }, data: { slug: slugTaken ? `${baseSlug}-${firm.id.slice(-6)}` : baseSlug } });
       const setupDefaults = createInitialSetupConfig(firmName);
       await tx.setupConfiguration.create({
         data: { firmId: firm.id, draft: setupDefaults as never, published: setupDefaults as never },

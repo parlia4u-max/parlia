@@ -3,6 +3,7 @@ import { completeTask } from "@/app/actions/matters";
 import { TaskCompleteForm } from "@/components/matter-forms";
 import { requireUser, hasPermission, permissionScope } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { ConsultationRequestsPanel } from "@/components/consultation-requests";
 import { taskUrgency, type UrgencyBand } from "@/lib/matter-rules";
 
 export default async function HomePage() {
@@ -110,6 +111,7 @@ export default async function HomePage() {
           </article>
         ) : null}
       </div>
+      {canViewMatters ? <ConsultationRequestsPanel firmId={user.firmId} canHandle={hasPermission(user, "matters", "Edit")} /> : null}
       {showTeamSummary ? (
         <section className="foundation-panel">
           <h2>Team work</h2>

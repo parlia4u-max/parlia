@@ -11,7 +11,9 @@ import {
   updateTaskAssignment,
 } from "@/app/actions/matters";
 import { createClientPortalUpdate, revokeClientMatterAccess } from "@/app/actions/client-portal";
-import { inviteClientToMatter } from "@/app/actions/client-auth";
+import { cancelPortalInvitation, inviteClientToMatter, sendPortalInvitation } from "@/app/actions/client-auth";
+import { portalInviteStatus } from "@/lib/portal-status";
+import { portalSettingsFromConfig } from "@/lib/portal-settings";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MatterFieldForm, MatterStageForm, TaskCategories, TaskCompleteForm } from "@/components/matter-forms";
 import { FoundationHeader } from "@/components/foundation";
@@ -94,7 +96,8 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
   const published = configuration?.published && typeof configuration.published === "object" ? configuration.published as Record<string, unknown> : {};
   const urgencyBands = Array.isArray(published.urgencyBands) ? published.urgencyBands as UrgencyBand[] : [];
   const categories = taskCategoriesFromConfig(configuration?.published);
-  const [portalAccess, portalUpdates] = canEditMatter ? await Promise.all([
+  const portalSettings = portalSettingsFromConfig(configuration?.published);
+  const [portalAccess, portalUpdates, latestInvitation, removedAccessCount] = canEditMatter ? await Promise.all([
     db.clientMatterAccess.findMany({
       where: { firmId: user.firmId, matterId: matter.id, revokedAt: null },
       include: { client: { select: { id: true, name: true, email: true, active: true } } },
@@ -106,7 +109,10 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
       orderBy: { createdAt: "desc" },
       take: 100,
     }),
-  ]) : [[], []];
+    db.clientPortalInvitation.findFirst({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, select: { createdAt: true, expiresAt: true, acceptedAt: true } }),
+    db.clientMatterAccess.count({ where: { firmId: user.firmId, matterId: matter.id, revokedAt: { not: null } } }),
+  ]) : [[], [], null, 0] as const;
+  const portalStatus = portalInviteStatus({ activeAccessCount: portalAccess.filter((access) => access.client.active).length, removedAccessCount, latestInvitation, reminderDays: portalSettings.inviteReminderDays });
 
   return (
     <section className="foundation-page">
@@ -134,11 +140,23 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
       {canEditMatter ? <section className="foundation-panel">
         <h2>Client portal</h2>
         <p className="foundation-muted">Access is connected to this matter only. The client sees only updates you explicitly share. Documents stay in the firm’s approved system; Parlia stores references and review status, not files.</p>
-        {matter.clientEmail ? <ActionForm action={inviteClientToMatter} className="foundation-form">
-          <input type="hidden" name="matterId" value={matter.id} />
-          <p>Client invitation will be sent to {matter.clientEmail}.</p>
-          <SubmitButton>Connect client portal account</SubmitButton>
-        </ActionForm> : <p className="foundation-notice">Add a client email to this matter before connecting a portal account.</p>}
+        <p><strong>Portal status: {portalStatus.status}{portalStatus.invitedAt ? ` (${portalStatus.invitedAt.toLocaleDateString()})` : ""}</strong></p>
+        {portalStatus.needsReminder ? <p className="foundation-notice">{portalStatus.expired ? "The invitation link has expired and was not accepted." : "The client has not accepted the invitation yet."} Send it again or contact the client.</p> : null}
+        {matter.clientEmail ? <div className="work-actions">
+          <ActionForm action={sendPortalInvitation} className="foundation-form">
+            <input type="hidden" name="matterId" value={matter.id} />
+            <SubmitButton>{portalStatus.status === "Invited" ? "Resend invitation" : "Send portal invitation"}</SubmitButton>
+          </ActionForm>
+          {portalStatus.status === "Invited" ? <ActionForm action={cancelPortalInvitation} className="foundation-form">
+            <input type="hidden" name="matterId" value={matter.id} />
+            <SubmitButton className="button-secondary">Cancel invitation</SubmitButton>
+          </ActionForm> : null}
+          <ActionForm action={inviteClientToMatter} className="foundation-form">
+            <input type="hidden" name="matterId" value={matter.id} />
+            <SubmitButton className="button-secondary">Connect an existing portal account</SubmitButton>
+          </ActionForm>
+        </div> : <p className="foundation-notice">Add a client email to this matter before inviting the client.</p>}
+        {matter.clientEmail ? <p className="foundation-muted">Invitations go only to {matter.clientEmail}, the email on this matter. Links work once and expire after {portalSettings.inviteExpiryDays} days.</p> : null}
         {portalAccess.length ? <div className="todo-list">{portalAccess.map((access) => (
           <article className="todo-card" key={access.id}>
             <div className="todo-card-heading"><div><h3>{access.client.name}</h3><p className="foundation-muted">{access.client.email}</p></div><span>{access.client.active ? "Active account" : "Account pending"}</span></div>

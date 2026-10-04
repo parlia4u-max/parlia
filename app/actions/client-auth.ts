@@ -7,6 +7,7 @@ import { getCurrentUser, hasPermission, permissionScope } from "@/lib/auth";
 import { createClientSession, signOutClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
 import { appUrl, sendEmail } from "@/lib/email";
+import { sendBrandedEmail } from "@/lib/firm-portal";
 import { createPortalInvitation } from "@/lib/portal-invites";
 import { canAccessRecord } from "@/lib/matter-rules";
 import { hashPassword, hashToken, hashVerificationCode, normalizeEmail, randomVerificationCode, requiredSecret, validEmail, verifyPassword } from "@/lib/security";
@@ -174,7 +175,7 @@ export async function loginClient(_state: string | null, form: FormData): Promis
     destination = `/client/verify?firm=${encodeURIComponent(client.firmId)}&email=${encodeURIComponent(client.email)}`;
     if (challenge.send) {
       try {
-        await sendEmail(client.email, "Your Parlia client portal sign-in code", `Hello ${client.name},\n\nYour sign-in code is ${code}. It expires in 10 minutes. If you did not request it, you can ignore this message.`);
+        await sendBrandedEmail(firmId, client.email, "Your client portal sign-in code", "Your sign-in code", [`Hello ${client.name},`, `Your sign-in code is ${code}. It expires in 10 minutes.`, "If you did not request it, you can ignore this message."]);
       } catch (error) {
         await db.clientPortalChallenge.deleteMany({ where: { id: challenge.id, firmId: client.firmId } });
         throw error;
@@ -265,7 +266,7 @@ export async function requestClientPasswordReset(_state: string | null, form: Fo
       });
       if (challenge.send) {
         try {
-          await sendEmail(client.email, "Your Parlia client portal password reset code", `Hello ${client.name},\n\nYour password reset code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore the message.`);
+          await sendBrandedEmail(firmId, client.email, "Your client portal password reset code", "Your password reset code", [`Hello ${client.name},`, `Your password reset code is ${code}. It expires in 10 minutes.`, "If you did not request this, you can ignore the message."]);
         } catch (error) {
           await db.clientPortalChallenge.deleteMany({ where: { id: challenge.id, firmId, clientId: client.id, purpose: "PasswordReset" } });
           throw error;
@@ -329,4 +330,33 @@ export async function resetClientPassword(_state: string | null, form: FormData)
 export async function logoutClient() {
   await signOutClient();
   redirect("/client/login");
+}
+
+export async function sendPortalInvitation(_state: string | null, form: FormData): Promise<string | null> {
+  try {
+    const { user, matter, db } = await authorizedMatterEditor(text(form, "matterId", "Matter", 80));
+    if (!matter.clientEmail) throw new ActionError("Add a client email to the matter before sending a portal invitation.");
+    const email = normalizeEmail(matter.clientEmail);
+    if (!validEmail(email)) throw new ActionError("The client email on this matter is not valid.");
+    const name = `${matter.clientName} ${matter.clientSurname}`.trim();
+    const invitation = await createPortalInvitation(db, { firmId: user.firmId, matterId: matter.id, senderId: user.id, email, name, replacePending: true });
+    await db.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "client_portal.invitation_sent", entityType: "client-portal-invitation", entityId: invitation?.id, details: { matterId: matter.id, email } } });
+    revalidatePath(`/matters/${matter.id}`);
+    return "success:Portal invitation sent. Any earlier link no longer works.";
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+}
+
+export async function cancelPortalInvitation(_state: string | null, form: FormData): Promise<string | null> {
+  try {
+    const { user, matter, db } = await authorizedMatterEditor(text(form, "matterId", "Matter", 80));
+    const result = await db.clientPortalInvitation.deleteMany({ where: { firmId: user.firmId, matterId: matter.id, acceptedAt: null } });
+    if (!result.count) throw new ActionError("There is no pending invitation to cancel.");
+    await db.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "client_portal.invitation_cancelled", entityType: "matter", entityId: matter.id } });
+    revalidatePath(`/matters/${matter.id}`);
+    return "success:Invitation cancelled.";
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
 }

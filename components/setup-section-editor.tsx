@@ -403,8 +403,8 @@ export function SetupSectionEditor({
       fields = (
         <div className="setup-list-editor">
           <h3>Access</h3>
-          {switchRow("requestAccessEnabled", "Show the “Request access” button", "Clients enter their reference number and email. A link is only sent if both match the matter.")}
-          {switchRow("inviteByDefault", "Tick “Send portal invitation” by default on new matters")}
+          {switchRow("requestAccessEnabled", "Show the Request access button", "Clients enter their reference number and email. A link is only sent if both match the matter.")}
+          {switchRow("inviteByDefault", "Tick Send portal invitation by default on new matters")}
           <label className="foundation-field"><span>Invitation wording</span><textarea maxLength={600} value={text(value.invitationWording)} onChange={(event) => setField("invitationWording", event.target.value)} /></label>
           <div className="setup-field-grid">
             <NumberField label="Invitation link expires after (days)" value={value.inviteExpiryDays} max={60} onChange={(next) => setField("inviteExpiryDays", next)} />

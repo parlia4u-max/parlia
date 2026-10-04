@@ -1,3 +1,4 @@
+import { ConsultationRequestsPanel } from "@/components/consultation-requests";
 import Link from "next/link";
 import { addCalendarChecklistItem, createCalendarEvent, createCalendarFollowUpTask, toggleCalendarChecklistItem } from "@/app/actions/calendar";
 import { ActionForm, SubmitButton } from "@/components/action-form";
@@ -246,6 +247,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   return (
     <section className="foundation-page calendar-page">
       <FoundationHeader title="Calendar" firm={user.firm.name} />
+      {canViewMatters ? <ConsultationRequestsPanel firmId={user.firmId} canHandle={hasPermission(user, "matters", "Edit")} /> : null}
       <div className="calendar-toolbar">
         <div className="calendar-month-number" aria-label={date.toLocaleDateString("en-ZA", { month: "long", timeZone: "UTC" })}>
           <strong>{date.getUTCMonth() + 1}</strong>

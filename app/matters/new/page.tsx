@@ -4,6 +4,7 @@ import { FoundationHeader } from "@/components/foundation";
 import { NewMatterForm } from "@/components/matter-forms";
 import { requirePermission, permissionScope } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { portalSettingsFromConfig } from "@/lib/portal-settings";
 import { matterTypesFromConfig } from "@/lib/matter-config";
 
 export default async function NewMatterPage() {
@@ -43,7 +44,7 @@ export default async function NewMatterPage() {
       ) : (
         <section className="foundation-panel">
           <h2>Matter details</h2>
-          <NewMatterForm action={createMatter} matterTypes={matterTypes} people={people} />
+          <NewMatterForm action={createMatter} matterTypes={matterTypes} people={people} inviteByDefault={portalSettingsFromConfig(configuration?.published).inviteByDefault} />
         </section>
       )}
       <p className="setup-back-link"><Link href="/matters">Back to matters</Link></p>

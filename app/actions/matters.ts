@@ -1,5 +1,6 @@
 "use server";
 
+import { createPortalInvitation } from "@/lib/portal-invites";
 import type { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -224,6 +225,14 @@ export async function createMatter(_state: string | null, formData: FormData): P
     });
     createdMatterId = matter.id;
     revalidateAll();
+    if (formData.get("sendPortalInvitation") === "on" && clientEmail) {
+      try {
+        const invitation = await createPortalInvitation(db, { firmId: user.firmId, matterId: matter.id, senderId: user.id, email: clientEmail.toLowerCase(), name: `${clientName} ${clientSurname}`.trim(), replacePending: true });
+        await db.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "client_portal.invitation_sent", entityType: "client-portal-invitation", entityId: invitation?.id, details: { matterId: matter.id, viaNewMatter: true } } });
+      } catch {
+        await db.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "client_portal.invitation_failed", entityType: "matter", entityId: matter.id } });
+      }
+    }
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
       return "A matter with that number already exists in this firm.";

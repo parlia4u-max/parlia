@@ -12,10 +12,12 @@ export function NewMatterForm({
   action,
   matterTypes,
   people,
+  inviteByDefault = false,
 }: {
   action: FormAction;
   matterTypes: MatterTypeDefinition[];
   people: ActivePerson[];
+  inviteByDefault?: boolean;
 }) {
   const [matterType, setMatterType] = useState(matterTypes[0]?.name ?? "");
   const stages = matterTypes.find((type) => type.name === matterType)?.stages ?? [];
@@ -29,6 +31,7 @@ export function NewMatterForm({
         <label className="foundation-field"><span>Stage</span><select name="stage" required>{stages.map((stage) => <option key={stage.name} value={stage.name}>{stage.name}</option>)}</select></label>
         <label className="foundation-field"><span>Responsible person</span><select name="responsibleId" required>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
       </div>
+      <label className="setup-checkbox-field"><input type="checkbox" name="sendPortalInvitation" defaultChecked={inviteByDefault} /><span>Send portal invitation (needs the client email under More matter details)</span></label>
       <details className="matter-more-fields">
         <summary>More matter details</summary>
         <div className="matter-form-grid">
