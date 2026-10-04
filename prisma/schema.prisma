@@ -66,6 +66,17 @@ enum AttendanceEventType {
   DutyCheckOut
 }
 
+enum ClientDocumentStatus {
+  PendingReview
+  Accepted
+  Rejected
+}
+
+enum ClientPortalChallengePurpose {
+  Login
+  PasswordReset
+}
+
 model Firm {
   id              String           @id @default(cuid())
   name            String
@@ -112,6 +123,13 @@ model Firm {
   attendanceLocations AttendanceLocation[]
   attendanceDays AttendanceDay[]
   reportSettings FirmReportSettings?
+  clientAccounts ClientPortalAccount[]
+  clientInvitations ClientPortalInvitation[]
+  clientSessions ClientPortalSession[]
+  clientChallenges ClientPortalChallenge[]
+  clientMatterAccess ClientMatterAccess[]
+  clientUpdates ClientPortalUpdate[]
+  clientDocumentReferences ClientDocumentReference[]
 }
 
 model SetupConfiguration {
@@ -191,6 +209,9 @@ model User {
   completedOnboardingItems OnboardingChecklistItem[]
   vaultEntriesCreated PasswordVaultEntry[]
   attendanceDays AttendanceDay[]
+  clientPortalInvitations ClientPortalInvitation[] @relation("ClientInviteSender")
+  clientUpdates ClientPortalUpdate[] @relation("ClientUpdateCreator")
+  reviewedClientDocuments ClientDocumentReference[] @relation("ClientDocumentReviewer")
 
   @@unique([email])
   @@unique([id, firmId])
@@ -347,6 +368,10 @@ model Matter {
   physicalFile      PhysicalFile?
   teamMessages      TeamMessage[]
   meetings          TeamMeeting[]
+  clientPortalAccess ClientMatterAccess[]
+  clientPortalUpdates ClientPortalUpdate[]
+  clientDocumentReferences ClientDocumentReference[]
+  clientPortalInvitations ClientPortalInvitation[]
 
   @@unique([id, firmId])
   @@unique([firmId, matterNumber])
@@ -576,6 +601,135 @@ model FirmReportSettings {
   firm            Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
   quietMatterDays Int      @default(30)
   updatedAt       DateTime @updatedAt
+}
+
+model ClientPortalAccount {
+  id           String                @id @default(cuid())
+  firmId       String
+  firm         Firm                  @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  email        String
+  name         String
+  passwordHash String?
+  active       Boolean               @default(false)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  sessions     ClientPortalSession[]
+  challenges   ClientPortalChallenge[]
+  matterAccess ClientMatterAccess[]
+  invitations  ClientPortalInvitation[]
+  submissions  ClientDocumentReference[]
+
+  @@unique([id, firmId])
+  @@unique([firmId, email])
+  @@index([firmId, active])
+}
+
+model ClientPortalInvitation {
+  id          String              @id @default(cuid())
+  firmId      String
+  firm        Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId    String
+  matter      Matter              @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  senderId    String
+  sender      User                @relation("ClientInviteSender", fields: [senderId, firmId], references: [id, firmId], onDelete: Cascade)
+  clientId    String?
+  client      ClientPortalAccount? @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  email       String
+  name        String
+  tokenHash   String              @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime            @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, email, expiresAt])
+}
+
+model ClientPortalSession {
+  id              String             @id @default(cuid())
+  firmId          String
+  firm            Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  clientId        String
+  client          ClientPortalAccount @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  tokenHash       String             @unique
+  lastActivityAt  DateTime           @default(now())
+  expiresAt       DateTime
+  createdAt       DateTime           @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, clientId, expiresAt])
+}
+
+model ClientPortalChallenge {
+  id         String             @id @default(cuid())
+  firmId     String
+  firm       Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  clientId   String
+  client     ClientPortalAccount @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  purpose    ClientPortalChallengePurpose @default(Login)
+  codeHash   String
+  attempts   Int                @default(0)
+  expiresAt  DateTime
+  createdAt  DateTime           @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, clientId, expiresAt])
+}
+
+model ClientMatterAccess {
+  id        String             @id @default(cuid())
+  firmId    String
+  firm      Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  clientId  String
+  client    ClientPortalAccount @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  matterId  String
+  matter    Matter             @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  grantedAt DateTime           @default(now())
+  revokedAt DateTime?
+
+  @@unique([id, firmId])
+  @@unique([firmId, clientId, matterId])
+  @@index([firmId, clientId, revokedAt])
+  @@index([firmId, matterId, revokedAt])
+}
+
+model ClientPortalUpdate {
+  id          String    @id @default(cuid())
+  firmId      String
+  firm        Firm      @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId    String
+  matter      Matter    @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  createdById String
+  createdBy   User      @relation("ClientUpdateCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  title       String
+  body        String
+  sharedAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, matterId, sharedAt, createdAt])
+}
+
+model ClientDocumentReference {
+  id             String               @id @default(cuid())
+  firmId         String
+  firm           Firm                 @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId       String
+  matter         Matter               @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  clientId       String
+  client         ClientPortalAccount  @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  reviewedById   String?
+  reviewedBy     User?                @relation("ClientDocumentReviewer", fields: [reviewedById, firmId], references: [id, firmId], onDelete: NoAction)
+  label          String
+  referenceUrl   String
+  status         ClientDocumentStatus @default(PendingReview)
+  reviewNote     String?
+  submittedAt    DateTime             @default(now())
+  reviewedAt     DateTime?
+
+  @@unique([id, firmId])
+  @@index([firmId, matterId, status, submittedAt])
+  @@index([firmId, clientId, submittedAt])
 }
 
 model PhysicalFile {

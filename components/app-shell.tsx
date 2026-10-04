@@ -28,6 +28,7 @@ export type NavigationAccess = {
   canViewCalendar: boolean;
   canViewAttendance: boolean;
   canViewReports: boolean;
+  canEditMatters: boolean;
   setupHrefs: string[];
 };
 
@@ -49,6 +50,7 @@ const menuGroups: MenuGroup[] = [
       { label: "Duties", href: "/duties", icon: "filing" },
       { label: "Physical files", href: "/physical-files", icon: "filing" },
       { label: "Reports", href: "/reports", icon: "reports" },
+      { label: "Client submissions", href: "/client-review", icon: "messages" },
     ],
   },
   {
@@ -185,6 +187,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
         if (item.href === "/calendar") return navigationAccess.canViewCalendar;
         if (item.href === "/attendance") return navigationAccess.canViewAttendance;
         if (item.href === "/reports") return navigationAccess.canViewReports;
+        if (item.href === "/client-review") return navigationAccess.canEditMatters;
         if (item.href === "/service-tracing" || item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||
@@ -220,7 +223,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
   }, [pathname]);
 
   const publicRoutes = ["/login", "/get-started", "/owner-account", "/accept-invitation", "/forgot-password", "/reset-password"];
-  if (publicRoutes.includes(pathname)) {
+  if (publicRoutes.includes(pathname) || pathname === "/client" || pathname.startsWith("/client/")) {
     return (
       <div className="public-shell">
         <Link className="public-brand" href="/" aria-label="Parlia home">

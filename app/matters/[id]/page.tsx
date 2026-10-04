@@ -10,6 +10,8 @@ import {
   updateMatterStatus,
   updateTaskAssignment,
 } from "@/app/actions/matters";
+import { createClientPortalUpdate, revokeClientMatterAccess } from "@/app/actions/client-portal";
+import { inviteClientToMatter } from "@/app/actions/client-auth";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MatterFieldForm, MatterStageForm, TaskCategories, TaskCompleteForm } from "@/components/matter-forms";
 import { FoundationHeader } from "@/components/foundation";
@@ -92,6 +94,19 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
   const published = configuration?.published && typeof configuration.published === "object" ? configuration.published as Record<string, unknown> : {};
   const urgencyBands = Array.isArray(published.urgencyBands) ? published.urgencyBands as UrgencyBand[] : [];
   const categories = taskCategoriesFromConfig(configuration?.published);
+  const [portalAccess, portalUpdates] = canEditMatter ? await Promise.all([
+    db.clientMatterAccess.findMany({
+      where: { firmId: user.firmId, matterId: matter.id, revokedAt: null },
+      include: { client: { select: { id: true, name: true, email: true, active: true } } },
+      orderBy: { grantedAt: "desc" },
+    }),
+    db.clientPortalUpdate.findMany({
+      where: { firmId: user.firmId, matterId: matter.id },
+      select: { id: true, title: true, body: true, sharedAt: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+  ]) : [[], []];
 
   return (
     <section className="foundation-page">
@@ -115,6 +130,44 @@ export default async function MatterDetailsPage({ params }: { params: Promise<{ 
           {matter.status === "OnHold" ? <><div><dt>On-hold reason</dt><dd>{matter.onHoldReason || "Not recorded"}</dd></div><div><dt>Review date</dt><dd>{matter.reviewDate?.toLocaleDateString() || "Not set"}</dd></div></> : null}
         </dl>
       </section>
+
+      {canEditMatter ? <section className="foundation-panel">
+        <h2>Client portal</h2>
+        <p className="foundation-muted">Access is connected to this matter only. The client sees only updates you explicitly share. Documents stay in the firm’s approved system; Parlia stores references and review status, not files.</p>
+        {matter.clientEmail ? <ActionForm action={inviteClientToMatter} className="foundation-form">
+          <input type="hidden" name="matterId" value={matter.id} />
+          <p>Client invitation will be sent to {matter.clientEmail}.</p>
+          <SubmitButton>Connect client portal account</SubmitButton>
+        </ActionForm> : <p className="foundation-notice">Add a client email to this matter before connecting a portal account.</p>}
+        {portalAccess.length ? <div className="todo-list">{portalAccess.map((access) => (
+          <article className="todo-card" key={access.id}>
+            <div className="todo-card-heading"><div><h3>{access.client.name}</h3><p className="foundation-muted">{access.client.email}</p></div><span>{access.client.active ? "Active account" : "Account pending"}</span></div>
+            <ActionForm action={revokeClientMatterAccess}>
+              <input type="hidden" name="matterId" value={matter.id} />
+              <input type="hidden" name="accessId" value={access.id} />
+              <SubmitButton className="button-secondary">Revoke matter access</SubmitButton>
+            </ActionForm>
+          </article>
+        ))}</div> : <p>No client account is connected to this matter.</p>}
+        <details>
+          <summary>More · prepare a portal update</summary>
+          <ActionForm action={createClientPortalUpdate} className="foundation-form">
+            <input type="hidden" name="matterId" value={matter.id} />
+            <label className="foundation-field"><span>Update title</span><input name="title" maxLength={160} required /></label>
+            <label className="foundation-field"><span>Update for the client</span><textarea name="body" maxLength={3000} required /></label>
+            <label className="foundation-field"><span><input type="checkbox" name="shareNow" /> Share this update with the connected client now</span></label>
+            <SubmitButton>Save update</SubmitButton>
+          </ActionForm>
+          {portalUpdates.map((update) => (
+            <article className="matter-timeline" key={update.id}>
+              <h3>{update.title} · {update.sharedAt ? "Shared" : "Private draft"}</h3>
+              <p>{update.body}</p>
+              <small>{update.createdAt.toLocaleString()}</small>
+            </article>
+          ))}
+        </details>
+        <Link href="/client-review">Review client document references</Link>
+      </section> : null}
 
       {canEditMatter ? (
         <section className="foundation-panel matter-control-grid">

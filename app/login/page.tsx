@@ -17,6 +17,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       </ActionForm>
       <p><Link href="/forgot-password">Forgot your password?</Link></p>
       <p>New to Parlia? <Link href="/get-started">Set up a firm</Link></p>
+      <p>Client? <Link href="/client/login">Sign in to the client portal</Link></p>
     </section>
   );
 }
