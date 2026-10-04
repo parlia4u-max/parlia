@@ -8,14 +8,14 @@ export function requireEmailConfiguration() {
   }
 }
 
-export async function sendEmail(to: string, subject: string, text: string) {
+export async function sendEmail(to: string, subject: string, text: string, html?: string) {
   requireEmailConfiguration();
   const apiKey = process.env.RESEND_API_KEY!;
   const from = process.env.EMAIL_FROM!;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [to], subject, text }),
+    body: JSON.stringify({ from, to: [to], subject, text, ...(html ? { html } : {}) }),
     cache: "no-store",
   });
   if (!response.ok) throw new ActionError(`Email provider rejected the message (${response.status}). Check RESEND_API_KEY and EMAIL_FROM.`);

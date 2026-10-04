@@ -1,5 +1,6 @@
 import { ActionError } from "./errors.ts";
 import { MODULES } from "./permissions.ts";
+import { DEFAULT_PORTAL_SETTINGS, validatePortalSettings } from "./portal-settings.ts";
 
 export const SETUP_SECTIONS = [
   { key: "firmProfile", label: "Firm profile and branding", href: "/settings/firm-profile", ownerOnly: false },
@@ -14,6 +15,7 @@ export const SETUP_SECTIONS = [
   { key: "minutesTemplates", label: "Minutes templates", href: "/settings/minutes-templates", ownerOnly: false },
   { key: "hrChecklist", label: "HR checklist and onboarding", href: "/settings/hr-checklist", ownerOnly: false },
   { key: "filingStructure", label: "Filing structure and locations", href: "/settings/filing-structure", ownerOnly: false },
+  { key: "clientPortal", label: "Client portal settings", href: "/settings/client-portal", ownerOnly: true },
   { key: "integrations", label: "Integration preferences", href: "/settings/integrations/preferences", ownerOnly: true },
   { key: "setupRights", label: "Supervisor setup rights", href: "/settings/supervisor-setup-rights", ownerOnly: true },
 ] as const;
@@ -42,7 +44,7 @@ const southAfricanHolidays2026 = [
 export function createInitialSetupConfig(firmName: string): SetupConfig {
   const defaultPermissions = Object.fromEntries(MODULES.map((module) => [module, { level: "None", scope: "Own" }]));
   return {
-    firmProfile: { name: firmName, legalName: "", email: "", phone: "", address: "", website: "", logoUrl: "" },
+    firmProfile: { name: firmName, legalName: "", email: "", phone: "", address: "", website: "", logoUrl: "", brandColour: "#B8913F" },
     countryHolidays: {
       country: "South Africa",
       province: "",
@@ -106,6 +108,7 @@ export function createInitialSetupConfig(firmName: string): SetupConfig {
       locations: [{ name: "Main office", code: "MAIN" }],
       folders: ["Correspondence", "Pleadings", "Evidence", "Court documents", "Accounts"],
     },
+    clientPortal: structuredClone(DEFAULT_PORTAL_SETTINGS),
     integrations: {
       calendarSyncEnabled: false,
       accountingEnabled: false,
@@ -157,6 +160,7 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
       }
       if (!String(data.name).trim()) throw new ActionError("Firm name is required.");
       if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(data.email))) throw new ActionError("Enter a valid email address.");
+      if (data.brandColour !== undefined && data.brandColour !== "" && !/^#[0-9a-f]{6}$/i.test(String(data.brandColour))) throw new ActionError("Brand colour must use #RRGGBB format.");
       if (data.website && !isHttpsUrl(String(data.website))) throw new ActionError("Website must be an HTTPS URL.");
       if (data.logoUrl && (!isHttpsUrl(String(data.logoUrl)) || String(data.logoUrl).length > 2048)) {
         throw new ActionError("Logo must be an HTTPS image URL. Uploads are not accepted.");
@@ -314,6 +318,9 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
       }
       break;
     }
+    case "clientPortal":
+      validatePortalSettings(value);
+      break;
     case "integrations": {
       const data = object(value, section);
       for (const key of ["calendarSyncEnabled", "accountingEnabled", "emailSyncEnabled"]) {

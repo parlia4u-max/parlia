@@ -4,6 +4,7 @@ import { useState } from "react";
 import { saveSetupDraft } from "@/app/actions/setup";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MODULES, MODULE_LABELS } from "@/lib/permissions";
+import { PORTAL_NOTIFICATION_KEYS } from "@/lib/portal-settings";
 import { STAGE_KINDS, TASK_CATEGORIES, type SetupSectionKey } from "@/lib/setup-config";
 
 type SetupValue = Record<string, any>;
@@ -72,6 +73,16 @@ function NullableNumberField({
   );
 }
 
+function ListField({ label, value, onChange, parse, maxLength }: { label: string; value: unknown[]; onChange: (value: any[]) => void; parse: (item: string) => unknown; maxLength: number }) {
+  const [raw, setRaw] = useState(value.join(", "));
+  return (
+    <TextField label={label} value={raw} maxLength={maxLength} onChange={(next) => {
+      setRaw(next);
+      onChange(next.split(",").map((item) => item.trim()).filter(Boolean).map(parse));
+    }} />
+  );
+}
+
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
   return <button aria-label={label} className="button-secondary setup-remove-button" onClick={onClick} type="button">Remove</button>;
 }
@@ -109,7 +120,8 @@ export function SetupSectionEditor({
           <label className="foundation-field"><span>Address</span><textarea maxLength={500} value={text(value.address)} onChange={(event) => setField("address", event.target.value)} /></label>
           <TextField label="Website (HTTPS)" type="url" value={value.website} maxLength={254} onChange={(next) => setField("website", next)} />
           <TextField label="Logo image URL (HTTPS only)" type="url" value={value.logoUrl} maxLength={2048} onChange={(next) => setField("logoUrl", next)} />
-          <p className="foundation-muted">Use a public HTTPS image URL. File uploads and embedded image data are not accepted.</p>
+          <TextField label="Brand colour (#RRGGBB)" value={value.brandColour} maxLength={7} onChange={(next) => setField("brandColour", next)} />
+          <p className="foundation-muted">Use a public HTTPS image URL. File uploads and embedded image data are not accepted. The logo, colour and name appear on your client portal page and in client emails.</p>
         </>
       );
       break;
@@ -380,8 +392,51 @@ export function SetupSectionEditor({
         </>
       );
       break;
-    case "integrations":
+    case "clientPortal": {
+      const notifications = value.notifications ?? {};
+      const switchRow = (key: string, label: string, hint?: string) => (
+        <label className="setup-integration-row" key={key}>
+          <span><strong>{label}</strong>{hint ? <small>{hint}</small> : null}</span>
+          <input type="checkbox" checked={Boolean(value[key])} onChange={(event) => setField(key, event.target.checked)} />
+        </label>
+      );
       fields = (
+        <div className="setup-list-editor">
+          <h3>Access</h3>
+          {switchRow("requestAccessEnabled", "Show the “Request access” button", "Clients enter their reference number and email. A link is only sent if both match the matter.")}
+          {switchRow("inviteByDefault", "Tick “Send portal invitation” by default on new matters")}
+          <label className="foundation-field"><span>Invitation wording</span><textarea maxLength={600} value={text(value.invitationWording)} onChange={(event) => setField("invitationWording", event.target.value)} /></label>
+          <div className="setup-field-grid">
+            <NumberField label="Invitation link expires after (days)" value={value.inviteExpiryDays} max={60} onChange={(next) => setField("inviteExpiryDays", next)} />
+            <NumberField label="Remind staff if not accepted after (days, 0 = never)" value={value.inviteReminderDays} max={60} onChange={(next) => setField("inviteReminderDays", next)} />
+          </div>
+          <h3>Client uploads</h3>
+          <ListField label="Allowed file endings (comma separated, e.g. pdf, jpg)" value={list(value.allowedUploadTypes)} maxLength={200} parse={(item) => item.toLowerCase().replace(/^\./, "")} onChange={(next) => setField("allowedUploadTypes", next)} />
+          <NumberField label="Largest file size (MB)" value={value.maxUploadMb} max={100} onChange={(next) => setField("maxUploadMb", next)} />
+          <h3>Welcome and tracker</h3>
+          <TextField label="Intro video link (unlisted HTTPS link; the video is not stored)" type="url" value={value.introVideoUrl} maxLength={2048} onChange={(next) => setField("introVideoUrl", next)} />
+          {switchRow("estimatedDatesEnabled", "Show estimated dates on the matter tracker", "Dates are always worded as estimates.")}
+          {switchRow("updateFeeEnabled", "Charge a fee when a client update is published", "Creates a possible billing entry for the attorney to confirm or decline.")}
+          <NumberField label="Update fee (rand, whole amount)" value={value.updateFeeAmount} max={1000000} onChange={(next) => setField("updateFeeAmount", next)} />
+          <h3>Client notifications</h3>
+          <p className="foundation-muted">Emails never contain matter details. They only say that something is waiting, with a login link.</p>
+          {PORTAL_NOTIFICATION_KEYS.map(([key, label]) => {
+            const entry = notifications[key] ?? {};
+            return (
+              <fieldset className="setup-edit-card" key={key}>
+                <legend>{label}</legend>
+                <label className="setup-checkbox-field"><input type="checkbox" checked={Boolean(entry.enabled)} onChange={(event) => setField("notifications", { ...notifications, [key]: { ...entry, enabled: event.target.checked } })} /><span>Send this notification</span></label>
+                <TextField label="Wording" value={entry.wording} maxLength={300} onChange={(next) => setField("notifications", { ...notifications, [key]: { ...entry, wording: next } })} />
+              </fieldset>
+            );
+          })}
+          <ListField label="Send reminders after these many days (comma separated, e.g. 3, 7)" value={list(value.reminderDays)} maxLength={80} parse={Number} onChange={(next) => setField("reminderDays", next)} />
+          <NumberField label="Maximum reminders per item" value={value.reminderMax} max={10} onChange={(next) => setField("reminderMax", next)} />
+        </div>
+      );
+      break;
+    }
+    case "integrations":      fields = (
         <div className="setup-list-editor">
           <p className="foundation-muted">These switches record preferences only. They do not connect provider accounts or synchronize calendar events. Manage OAuth connections from Settings â†’ Calendar integrations.</p>
           {[

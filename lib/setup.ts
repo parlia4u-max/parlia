@@ -8,10 +8,20 @@ export async function ensureSetupConfiguration(firmId: string) {
   const firm = await db.firm.findUnique({ where: { id: firmId }, select: { id: true, name: true } });
   if (!firm) notFound();
   const defaults = createInitialSetupConfig(firm.name);
-  return db.setupConfiguration.upsert({
+  const config = await db.setupConfiguration.upsert({
     where: { firmId },
     create: { firmId, draft: defaults as never, published: defaults as never },
     update: {},
+  });
+  // Firms set up before a section existed receive its defaults so publishing stays valid.
+  const draft = config.draft as Record<string, unknown>;
+  const published = config.published as Record<string, unknown>;
+  const missing = SETUP_SECTIONS.map((section) => section.key).filter((key) => draft[key] === undefined || published[key] === undefined);
+  if (!missing.length) return config;
+  const fill = (current: Record<string, unknown>) => ({ ...Object.fromEntries(missing.map((key) => [key, (defaults as Record<string, unknown>)[key]])), ...current });
+  return db.setupConfiguration.update({
+    where: { firmId },
+    data: { draft: fill(draft) as never, published: fill(published) as never },
   });
 }
 

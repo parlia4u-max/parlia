@@ -77,6 +77,18 @@ enum ClientPortalChallengePurpose {
   PasswordReset
 }
 
+enum ConsultationStatus {
+  New
+  Handled
+}
+
+enum PortalAccessOutcome {
+  Sent
+  NoMatch
+  Blocked
+  Consultation
+}
+
 enum IntegrationProvider {
   GoogleCalendar
   Microsoft365Calendar
@@ -85,6 +97,9 @@ enum IntegrationProvider {
 model Firm {
   id              String           @id @default(cuid())
   name            String
+  slug            String?          @unique
+  consultationRequests ConsultationRequest[]
+  portalAccessRequests PortalAccessRequest[]
   staffSeatLimit  Int?
   createdAt       DateTime         @default(now())
   users           User[]
@@ -1211,4 +1226,35 @@ model PasswordVaultEntry {
 
   @@unique([id, firmId])
   @@index([firmId, createdAt])
+}
+
+model ConsultationRequest {
+  id          String             @id @default(cuid())
+  firmId      String
+  firm        Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  name        String
+  contact     String
+  description String
+  status      ConsultationStatus @default(New)
+  createdAt   DateTime           @default(now())
+  handledAt   DateTime?
+  handledById String?
+
+  @@unique([id, firmId])
+  @@index([firmId, status, createdAt])
+}
+
+model PortalAccessRequest {
+  id            String              @id @default(cuid())
+  firmId        String
+  firm          Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  ipHash        String
+  emailHash     String
+  outcome       PortalAccessOutcome
+  staffNotified Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+
+  @@index([firmId, createdAt])
+  @@index([firmId, ipHash, createdAt])
+  @@index([firmId, emailHash, createdAt])
 }

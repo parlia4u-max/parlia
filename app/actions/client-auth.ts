@@ -7,8 +7,9 @@ import { getCurrentUser, hasPermission, permissionScope } from "@/lib/auth";
 import { createClientSession, signOutClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
 import { appUrl, sendEmail } from "@/lib/email";
+import { createPortalInvitation } from "@/lib/portal-invites";
 import { canAccessRecord } from "@/lib/matter-rules";
-import { hashPassword, hashToken, hashVerificationCode, normalizeEmail, randomToken, randomVerificationCode, requiredSecret, validEmail, verifyPassword } from "@/lib/security";
+import { hashPassword, hashToken, hashVerificationCode, normalizeEmail, randomVerificationCode, requiredSecret, validEmail, verifyPassword } from "@/lib/security";
 
 function text(form: FormData, key: string, label: string, max: number) {
   const value = form.get(key);
@@ -76,26 +77,8 @@ export async function inviteClientToMatter(_state: string | null, form: FormData
       return "success:Existing client portal account connected to this matter.";
     }
 
-    const token = randomToken();
-    const invitation = await db.$transaction(async (tx) => {
-      await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "Matter" WHERE "id" = ${matter.id} AND "firmId" = ${user.firmId} FOR UPDATE`;
-      const pending = await tx.clientPortalInvitation.findFirst({
-        where: { firmId: user.firmId, matterId: matter.id, email, acceptedAt: null, expiresAt: { gt: new Date() } },
-        select: { id: true },
-      });
-      if (pending) throw new ActionError("An active client portal invitation already exists for this matter.");
-      return tx.clientPortalInvitation.create({
-        data: { firmId: user.firmId, matterId: matter.id, senderId: user.id, email, name, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-        select: { id: true },
-      });
-    });
-    try {
-      await sendEmail(email, `Invitation to the ${user.firm.name} client portal`, `Hello ${name},\n\n${user.firm.name} invited you to its secure client portal for matter ${matter.matterNumber}. Set a password within seven days: ${appUrl(`/client/invitation?token=${encodeURIComponent(token)}`)}\n\nClient portal access is limited to matters the firm explicitly connects to your account.`);
-    } catch (error) {
-      await db.clientPortalInvitation.deleteMany({ where: { id: invitation.id, firmId: user.firmId, acceptedAt: null } });
-      throw error;
-    }
-    await db.auditLog.create({
+    const invitation = await createPortalInvitation(db, { firmId: user.firmId, matterId: matter.id, senderId: user.id, email, name, replacePending: false });
+    if (!invitation) throw new ActionError("An active client portal invitation already exists for this matter.");    await db.auditLog.create({
       data: { firmId: user.firmId, actorId: user.id, action: "client_portal.invitation_sent", entityType: "client-portal-invitation", entityId: invitation.id, details: { matterId: matter.id, email } },
     });
     revalidatePath(`/matters/${matter.id}`);
