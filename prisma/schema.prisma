@@ -109,6 +109,7 @@ model Firm {
   matterDocuments MatterDocument[]
   invoices Invoice[]
   paymentProofs PaymentProof[]
+  clientNotifications ClientNotification[]
   documentViews ClientDocumentView[]
   portalAccessRequests PortalAccessRequest[]
   staffSeatLimit  Int?
@@ -382,6 +383,7 @@ model Matter {
   possibleBillings  PossibleBilling[]
   matterDocuments   MatterDocument[]
   invoices          Invoice[]
+  notifications     ClientNotification[]
   matterType        String
   stage             String
   stageKind         MatterStageKind @default(A)
@@ -660,6 +662,7 @@ model ClientPortalAccount {
   submissions  ClientDocumentReference[]
   introSeenAt  DateTime?
   paymentProofs PaymentProof[]
+  notifications ClientNotification[]
   documentViews ClientDocumentView[]
 
   @@unique([id, firmId])
@@ -1382,4 +1385,33 @@ model PaymentProof {
   @@unique([id, firmId])
   @@index([firmId, status, submittedAt])
   @@index([firmId, invoiceId])
+}
+
+enum ClientNotificationKind {
+  NewUpdate
+  NewDocument
+  DocumentRequested
+  InvoicePublished
+  Meeting
+  UploadReviewed
+}
+
+model ClientNotification {
+  id            String                 @id @default(cuid())
+  firmId        String
+  firm          Firm                   @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  clientId      String
+  client        ClientPortalAccount    @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  matterId      String
+  matter        Matter                 @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  kind          ClientNotificationKind
+  message       String?
+  createdAt     DateTime               @default(now())
+  readAt        DateTime?
+  doneAt        DateTime?
+  emailCount    Int                    @default(0)
+  lastEmailedAt DateTime?
+
+  @@index([firmId, clientId, doneAt])
+  @@index([firmId, matterId, doneAt])
 }

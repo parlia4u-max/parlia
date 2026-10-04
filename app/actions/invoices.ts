@@ -7,6 +7,7 @@ import { getCurrentClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
 import { authorizedMatterEditor } from "@/lib/matter-editor";
 import { validatedDocumentReference } from "@/lib/client-portal-rules";
+import { completeNotifications, notifyMatterClients } from "@/lib/client-notify";
 
 function text(form: FormData, key: string, label: string, max: number) {
   const value = form.get(key);
@@ -90,6 +91,7 @@ export async function publishInvoice(_state: string | null, form: FormData): Pro
       await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "invoice.published", entityType: "invoice", entityId: id, details: { matterId: matter.id } } });
     });
     refresh(matter.id);
+    await notifyMatterClients({ firmId: user.firmId, matterId: matter.id, kind: "InvoicePublished" });
     return "success:Invoice published and locked. The client can now see it.";
   } catch (error) {
     return actionErrorMessage(error);
@@ -140,6 +142,7 @@ export async function submitProofOfPayment(_state: string | null, form: FormData
       const created = await tx.paymentProof.create({ data: { firmId: client.firmId, invoiceId, clientId: client.id, referenceUrl, note }, select: { id: true } });
       await tx.auditLog.create({ data: { firmId: client.firmId, action: "invoice.proof_submitted", entityType: "payment-proof", entityId: created.id, details: { invoiceId, clientId: client.id } } });
     });
+    await completeNotifications(client.firmId, invoice.matterId, client.id, ["InvoicePublished"]);
     revalidatePath(`/client/matters/${invoice.matterId}`);
     revalidatePath("/accounts-review");
     return "success:Thank you. Your payment is waiting for confirmation.";
@@ -170,6 +173,8 @@ export async function reviewPaymentProof(_state: string | null, form: FormData):
       await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: decision === "Confirm" ? "invoice.payment_confirmed" : "invoice.payment_rejected", entityType: "payment-proof", entityId: id, details: { invoiceId: proof.invoice.id, reason } } });
     });
     refresh(matterId);
+    await completeNotifications(user.firmId, matterId, null, ["InvoicePublished"]);
+    await notifyMatterClients({ firmId: user.firmId, matterId, kind: "UploadReviewed" });
     return decision === "Confirm" ? "success:Payment confirmed." : "success:Rejected. The client will see the reason and can send a new proof.";
   } catch (error) {
     return actionErrorMessage(error);

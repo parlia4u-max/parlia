@@ -10,11 +10,12 @@ import {
   updateMatterStatus,
   updateTaskAssignment,
 } from "@/app/actions/matters";
-import { createClientPortalUpdate, addMatterDocument, decidePossibleBilling, revokeClientMatterAccess, setDocumentShared, setClientStep } from "@/app/actions/client-portal";
+import { createClientPortalUpdate, addMatterDocument, decidePossibleBilling, requestClientDocument, revokeClientMatterAccess, setDocumentShared, setClientStep } from "@/app/actions/client-portal";
 import { cancelPortalInvitation, inviteClientToMatter, sendPortalInvitation } from "@/app/actions/client-auth";
 import { portalInviteStatus } from "@/lib/portal-status";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
 import { clientStepsForType, computeTracker } from "@/lib/client-tracker";
+import { KIND_LABELS } from "@/lib/client-notify-rules";
 import { MatterInvoices } from "@/components/matter-invoices";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MatterFieldForm, MatterStageForm, TaskCategories, TaskCompleteForm } from "@/components/matter-forms";
@@ -102,7 +103,7 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
   const urgencyBands = Array.isArray(published.urgencyBands) ? published.urgencyBands as UrgencyBand[] : [];
   const categories = taskCategoriesFromConfig(configuration?.published);
   const portalSettings = portalSettingsFromConfig(configuration?.published);
-  const [portalAccess, portalUpdates, latestInvitation, removedAccessCount, pendingBillings, matterDocuments] = canEditMatter ? await Promise.all([
+  const [portalAccess, portalUpdates, latestInvitation, removedAccessCount, pendingBillings, matterDocuments, clientNotifications] = canEditMatter ? await Promise.all([
     db.clientMatterAccess.findMany({
       where: { firmId: user.firmId, matterId: matter.id, revokedAt: null },
       include: { client: { select: { id: true, name: true, email: true, active: true } } },
@@ -118,7 +119,8 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
     db.clientMatterAccess.count({ where: { firmId: user.firmId, matterId: matter.id, revokedAt: { not: null } } }),
     db.possibleBilling.findMany({ where: { firmId: user.firmId, matterId: matter.id, status: "Pending" }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.matterDocument.findMany({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, take: 200, include: { _count: { select: { views: true } } } }),
-  ]) : [[], [], null, 0, [], []] as const;
+    db.clientNotification.findMany({ where: { firmId: user.firmId, matterId: matter.id, doneAt: null }, orderBy: { createdAt: "desc" }, take: 50, include: { client: { select: { name: true } } } }),
+  ]) : [[], [], null, 0, [], [], []] as const;
   const canSeeInvoices = canEditMatter || hasPermission(user, "accounts", "Edit");
   const invoiceRows = canSeeInvoices ? await db.invoice.findMany({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, take: 200, include: { proofs: { orderBy: { submittedAt: "desc" }, take: 1, select: { status: true } } } }) : [];
   const rawType = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === matter.matterType);
@@ -199,6 +201,18 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
             </article>
           ))}
         </div> : null}
+        {clientNotifications.length ? <div>
+          <h3>Waiting for the client</h3>
+          <ul>{clientNotifications.map((item) => <li key={item.id}>{KIND_LABELS[item.kind]} - {item.client.name} - {item.readAt ? "seen, not yet done" : "not yet opened"} ({item.createdAt.toLocaleDateString()})</li>)}</ul>
+        </div> : null}
+        <details>
+          <summary>More - ask the client for a document</summary>
+          <ActionForm action={requestClientDocument} className="foundation-form">
+            <input type="hidden" name="matterId" value={matter.id} />
+            <label className="foundation-field"><span>What do you need? (shown only after the client logs in)</span><input name="message" maxLength={300} required /></label>
+            <SubmitButton>Ask the client</SubmitButton>
+          </ActionForm>
+        </details>
         <details>
           <summary>More - documents for the client</summary>
           <p className="foundation-muted">Add a link to a file in the firm system. Nothing is visible to the client unless you tick "Share with client".</p>

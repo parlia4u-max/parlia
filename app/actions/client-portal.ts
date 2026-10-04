@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ActionError, actionErrorMessage } from "@/lib/errors";
 import { getCurrentClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
-import { sendEmail } from "@/lib/email";
+import { completeNotifications, notifyMatterClients } from "@/lib/client-notify";
 import { authorizedMatterEditor } from "@/lib/matter-editor";
 import { validatedDocumentReference } from "@/lib/client-portal-rules";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
@@ -52,6 +52,7 @@ export async function createClientPortalUpdate(_state: string | null, form: Form
     });
     revalidatePath(`/matters/${matter.id}`);
     revalidatePath(`/client/matters/${matter.id}`);
+    if (shareNow) await notifyMatterClients({ firmId: user.firmId, matterId: matter.id, kind: "NewUpdate" });
     return shareNow ? "success:Update saved and shared with the connected client." : "success:Private draft saved. It is not visible in the client portal.";
   } catch (error) {
     return actionErrorMessage(error);
@@ -100,6 +101,7 @@ export async function submitClientDocumentReference(_state: string | null, form:
     await db.auditLog.create({
       data: { firmId: client.firmId, actorId: null, action: "client_portal.document_reference_submitted", entityType: "client-document-reference", entityId: reference.id, details: { matterId: access.matterId, clientId: client.id } },
     });
+    await completeNotifications(client.firmId, access.matterId, client.id, ["DocumentRequested"]);
     revalidatePath(`/client/matters/${matterId}`);
     revalidatePath("/client-review");
     return "success:Document reference submitted for firm review. No file was uploaded to Parlia.";
@@ -133,11 +135,7 @@ export async function reviewClientDocumentReference(_state: string | null, form:
     });
     revalidatePath("/client-review");
     revalidatePath(`/client/matters/${matter.id}`);
-    try {
-      await sendEmail(reference.client.email, `${user.firm.name}: document reference reviewed`, `Hello ${reference.client.name},\n\nThe firm has ${decision.toLowerCase()} the document reference “${reference.label}” for matter ${matter.matterNumber}.${reviewNote ? `\n\nNote: ${reviewNote}` : ""}\n\nSign in to the client portal to view the status.`);
-    } catch (error) {
-      return `Review status was saved, but the client notification failed: ${actionErrorMessage(error)}`;
-    }
+    await notifyMatterClients({ firmId: user.firmId, matterId: matter.id, kind: "UploadReviewed" });
     return `success:Submission ${decision.toLowerCase()} and client notified.`;
   } catch (error) {
     return actionErrorMessage(error);
@@ -211,6 +209,7 @@ export async function addMatterDocument(_state: string | null, form: FormData): 
     });
     revalidatePath(`/matters/${matter.id}`);
     revalidatePath(`/client/matters/${matter.id}`);
+    if (share) await notifyMatterClients({ firmId: user.firmId, matterId: matter.id, kind: "NewDocument" });
     return share ? "success:Document added and shared with the client." : "success:Document added. It is not shared with the client.";
   } catch (error) {
     return actionErrorMessage(error);
@@ -233,6 +232,7 @@ export async function setDocumentShared(_state: string | null, form: FormData): 
     });
     revalidatePath(`/matters/${matter.id}`);
     revalidatePath(`/client/matters/${matter.id}`);
+    if (share) await notifyMatterClients({ firmId: user.firmId, matterId: matter.id, kind: "NewDocument" });
     return share ? "success:Shared with the client." : "success:No longer shared.";
   } catch (error) {
     return actionErrorMessage(error);
@@ -244,4 +244,21 @@ export async function markIntroSeen(): Promise<void> {
   if (!client) return;
   await getDb().clientPortalAccount.updateMany({ where: { id: client.id, firmId: client.firmId, introSeenAt: null }, data: { introSeenAt: new Date() } });
   revalidatePath("/client");
+}
+export async function requestClientDocument(_state: string | null, form: FormData): Promise<string | null> {
+  try {
+    const matterId = text(form, "matterId", "Matter", 80);
+    const { user, matter, db } = await authorizedMatterEditor(matterId);
+    const message = text(form, "message", "What you need", 300);
+    if (!await db.clientMatterAccess.findFirst({ where: { firmId: user.firmId, matterId: matter.id, revokedAt: null, client: { active: true } }, select: { id: true } })) {
+      throw new ActionError("Connect an active client portal account to this matter first.");
+    }
+    await db.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "client_portal.document_requested", entityType: "matter", entityId: matter.id } });
+    await notifyMatterClients({ firmId: user.firmId, matterId: matter.id, kind: "DocumentRequested", message });
+    revalidatePath(`/matters/${matter.id}`);
+    revalidatePath(`/client/matters/${matter.id}`);
+    return "success:The client has been asked and will see it in their portal.";
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
 }

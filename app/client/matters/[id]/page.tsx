@@ -6,6 +6,7 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { FoundationHeader } from "@/components/foundation";
 import { getCurrentClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
+import { KIND_LABELS, VIEW_ONLY_KINDS } from "@/lib/client-notify-rules";
 import { ClientTracker } from "@/components/client-tracker";
 import { ClientInvoices } from "@/components/client-invoices";
 import { clientStepsForType, computeTracker } from "@/lib/client-tracker";
@@ -31,6 +32,10 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
   });
   if (!access || access.matter.firmId !== client.firmId) notFound();
   const matter = access.matter;
+  const openItems = await getDb().clientNotification.findMany({ where: { firmId: client.firmId, clientId: client.id, matterId: matter.id, doneAt: null }, orderBy: { createdAt: "desc" }, take: 50 });
+  const now = new Date();
+  await getDb().clientNotification.updateMany({ where: { firmId: client.firmId, clientId: client.id, matterId: matter.id, readAt: null }, data: { readAt: now } });
+  await getDb().clientNotification.updateMany({ where: { firmId: client.firmId, clientId: client.id, matterId: matter.id, doneAt: null, kind: { in: [...VIEW_ONLY_KINDS] } }, data: { doneAt: now } });
   const setup = await getDb().setupConfiguration.findUnique({ where: { firmId: client.firmId }, select: { published: true } });
   const published = setup?.published && typeof setup.published === "object" ? setup.published as Record<string, unknown> : {};
   const type = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === matter.matterType);
@@ -55,6 +60,9 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
         <p>Responsible person: {matter.responsible.name}</p>
         <p className="foundation-muted">This view contains only information the firm chose to share with you.</p>
       </section>
+      {openItems.length ? <section className="foundation-panel"><h2>Needs your attention</h2><ul>{openItems.map((item) => (
+        <li key={item.id}><strong>{KIND_LABELS[item.kind]}</strong>{item.message ? `: ${item.message}` : ""}</li>
+      ))}</ul></section> : null}
       {tracker ? <ClientTracker steps={tracker} updates={matter.clientPortalUpdates.map((update) => ({ id: update.id, title: update.title, body: update.body, sharedAt: update.sharedAt, author: update.createdBy.name }))} /> : null}
       <section className="foundation-panel">
         <h2>Shared updates</h2>
