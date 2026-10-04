@@ -489,6 +489,30 @@ input:focus-visible {
   color: #5f584e;
 }
 
+.integration-provider-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+}
+
+.integration-provider-row > span:first-child {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.integration-provider-row small {
+  color: #5f584e;
+  overflow-wrap: anywhere;
+}
+
+.integration-provider-row form {
+  margin: 0;
+}
+
 .setup-footer-links {
   display: flex;
   flex-wrap: wrap;
@@ -1194,6 +1218,15 @@ input:focus-visible {
 
   .setup-desktop-content {
     display: none;
+  }
+
+  .integration-provider-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .integration-provider-row > a,
+  .integration-provider-row > form {
+    grid-column: 1 / -1;
   }
 
   .setup-mobile-notice {

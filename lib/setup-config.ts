@@ -14,7 +14,7 @@ export const SETUP_SECTIONS = [
   { key: "minutesTemplates", label: "Minutes templates", href: "/settings/minutes-templates", ownerOnly: false },
   { key: "hrChecklist", label: "HR checklist and onboarding", href: "/settings/hr-checklist", ownerOnly: false },
   { key: "filingStructure", label: "Filing structure and locations", href: "/settings/filing-structure", ownerOnly: false },
-  { key: "integrations", label: "Integrations", href: "/settings/integrations", ownerOnly: true },
+  { key: "integrations", label: "Integration preferences", href: "/settings/integrations/preferences", ownerOnly: true },
   { key: "setupRights", label: "Supervisor setup rights", href: "/settings/supervisor-setup-rights", ownerOnly: true },
 ] as const;
 

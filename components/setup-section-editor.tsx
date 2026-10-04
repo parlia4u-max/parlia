@@ -383,7 +383,7 @@ export function SetupSectionEditor({
     case "integrations":
       fields = (
         <div className="setup-list-editor">
-          <p className="foundation-muted">Connections are not implemented in Setup Centre. These switches record preferences only; they do not connect providers or imply a successful connection.</p>
+          <p className="foundation-muted">These switches record preferences only. They do not connect provider accounts or synchronize calendar events. Manage OAuth connections from Settings → Calendar integrations.</p>
           {[
             ["calendarSyncEnabled", "Calendar sync preference"],
             ["accountingEnabled", "Accounting integration preference"],

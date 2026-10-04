@@ -77,6 +77,11 @@ enum ClientPortalChallengePurpose {
   PasswordReset
 }
 
+enum IntegrationProvider {
+  GoogleCalendar
+  Microsoft365Calendar
+}
+
 model Firm {
   id              String           @id @default(cuid())
   name            String
@@ -130,6 +135,8 @@ model Firm {
   clientMatterAccess ClientMatterAccess[]
   clientUpdates ClientPortalUpdate[]
   clientDocumentReferences ClientDocumentReference[]
+  integrationConnections IntegrationConnection[]
+  integrationOAuthStates IntegrationOAuthState[]
 }
 
 model SetupConfiguration {
@@ -212,6 +219,8 @@ model User {
   clientPortalInvitations ClientPortalInvitation[] @relation("ClientInviteSender")
   clientUpdates ClientPortalUpdate[] @relation("ClientUpdateCreator")
   reviewedClientDocuments ClientDocumentReference[] @relation("ClientDocumentReviewer")
+  integrationConnections IntegrationConnection[] @relation("IntegrationConnectedBy")
+  integrationOAuthStates IntegrationOAuthState[] @relation("IntegrationOAuthInitiator")
 
   @@unique([email])
   @@unique([id, firmId])
@@ -730,6 +739,46 @@ model ClientDocumentReference {
   @@unique([id, firmId])
   @@index([firmId, matterId, status, submittedAt])
   @@index([firmId, clientId, submittedAt])
+}
+
+model IntegrationConnection {
+  id                    String              @id @default(cuid())
+  firmId                String
+  firm                  Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  provider              IntegrationProvider
+  connectedEmail        String
+  encryptedTokens       String
+  tokensIv              String
+  tokensAuthTag         String
+  scopes                String
+  accessTokenExpiresAt  DateTime?
+  connectedById         String
+  connectedBy           User                @relation("IntegrationConnectedBy", fields: [connectedById, firmId], references: [id, firmId], onDelete: Restrict)
+  connectedAt           DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@unique([id, firmId])
+  @@unique([firmId, provider])
+  @@index([firmId, provider, accessTokenExpiresAt])
+}
+
+model IntegrationOAuthState {
+  id                       String              @id @default(cuid())
+  firmId                   String
+  firm                     Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  userId                   String
+  user                     User                @relation("IntegrationOAuthInitiator", fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  provider                 IntegrationProvider
+  stateHash                String              @unique
+  encryptedCodeVerifier    String
+  verifierIv               String
+  verifierAuthTag          String
+  expiresAt                DateTime
+  usedAt                   DateTime?
+  createdAt                DateTime            @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, userId, expiresAt])
 }
 
 model PhysicalFile {

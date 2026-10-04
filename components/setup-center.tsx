@@ -37,7 +37,7 @@ export async function SetupSectionPage({ section }: { section: SetupSectionKey }
           <p className="foundation-intro">{section === "firmProfile"
             ? "Edit the firm identity used by Parlia. Logos are stored as HTTPS image references only; file uploads are not accepted."
             : section === "integrations"
-              ? "Save integration preferences only. No provider connections are available here; connection status remains Not connected."
+             ? "Save integration preferences only. These preferences do not connect provider accounts or synchronize calendar events. Manage provider connections from Calendar integrations."
               : section === "setupRights"
                 ? "Grant active supervisors access to draft selected setup sections. Owners alone can publish, edit permissions, change integrations or grant setup rights."
                 : "Changes are saved to this firm’s draft only. They do not affect active settings until the owner publishes the complete setup."}</p>
