@@ -15,6 +15,7 @@ import { cancelPortalInvitation, inviteClientToMatter, sendPortalInvitation } fr
 import { portalInviteStatus } from "@/lib/portal-status";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
 import { clientStepsForType, computeTracker } from "@/lib/client-tracker";
+import { MatterInvoices } from "@/components/matter-invoices";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MatterFieldForm, MatterStageForm, TaskCategories, TaskCompleteForm } from "@/components/matter-forms";
 import { FoundationHeader } from "@/components/foundation";
@@ -118,6 +119,8 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
     db.possibleBilling.findMany({ where: { firmId: user.firmId, matterId: matter.id, status: "Pending" }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.matterDocument.findMany({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, take: 200, include: { _count: { select: { views: true } } } }),
   ]) : [[], [], null, 0, [], []] as const;
+  const canSeeInvoices = canEditMatter || hasPermission(user, "accounts", "Edit");
+  const invoiceRows = canSeeInvoices ? await db.invoice.findMany({ where: { firmId: user.firmId, matterId: matter.id }, orderBy: { createdAt: "desc" }, take: 200, include: { proofs: { orderBy: { submittedAt: "desc" }, take: 1, select: { status: true } } } }) : [];
   const rawType = (Array.isArray(published.matterTypes) ? published.matterTypes : []).find((item) => item && typeof item === "object" && (item as Record<string, unknown>).name === matter.matterType);
   const clientSteps = clientStepsForType(rawType, stages);
   const trackerNow = computeTracker({ steps: clientSteps, currentStage: matter.stage, override: matter.clientStepOverride, estimates: matter.clientStepEstimates, showEstimates: true });
@@ -254,6 +257,11 @@ export default async function MatterDetailsPage({ params, searchParams }: { para
         </details>
         <Link href="/client-review">Review client document references</Link>
       </section> : null}
+
+      {canSeeInvoices ? <MatterInvoices matterId={matter.id} invoices={invoiceRows.map((invoice) => ({
+        id: invoice.id, number: invoice.number, issueDate: invoice.issueDate, amountCents: invoice.amountCents, status: invoice.status, documentUrl: invoice.documentUrl,
+        publishedAt: invoice.publishedAt, creditNoteForId: invoice.creditNoteForId, credited: invoiceRows.some((other) => other.creditNoteForId === invoice.id), proofStatus: invoice.proofs[0]?.status ?? null,
+      }))} /> : null}
 
       {canEditMatter ? (
         <section className="foundation-panel matter-control-grid">

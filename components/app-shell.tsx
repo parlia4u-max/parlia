@@ -29,6 +29,7 @@ export type NavigationAccess = {
   canViewAttendance: boolean;
   canViewReports: boolean;
   canEditMatters: boolean;
+  canEditAccounts: boolean;
   setupHrefs: string[];
 };
 
@@ -51,6 +52,7 @@ const menuGroups: MenuGroup[] = [
       { label: "Physical files", href: "/physical-files", icon: "filing" },
       { label: "Reports", href: "/reports", icon: "reports" },
       { label: "Client submissions", href: "/client-review", icon: "messages" },
+      { label: "Payment reviews", href: "/accounts-review", icon: "reports" },
     ],
   },
   {
@@ -188,6 +190,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
         if (item.href === "/attendance") return navigationAccess.canViewAttendance;
         if (item.href === "/reports") return navigationAccess.canViewReports;
         if (item.href === "/client-review") return navigationAccess.canEditMatters;
+        if (item.href === "/accounts-review") return navigationAccess.canEditAccounts;
         if (item.href === "/service-tracing" || item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||

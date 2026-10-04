@@ -2,11 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { ActionError, actionErrorMessage } from "@/lib/errors";
-import { getCurrentUser, hasPermission, permissionScope } from "@/lib/auth";
 import { getCurrentClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
-import { canAccessRecord } from "@/lib/matter-rules";
+import { authorizedMatterEditor } from "@/lib/matter-editor";
 import { validatedDocumentReference } from "@/lib/client-portal-rules";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
 import { clientStepsForType } from "@/lib/client-tracker";
@@ -24,28 +23,6 @@ function optionalText(form: FormData, key: string, label: string, max: number) {
   if (value === null || value === "") return null;
   if (typeof value !== "string" || value.trim().length > max) throw new ActionError(`${label} must be ${max} characters or fewer.`);
   return value.trim() || null;
-}
-
-async function authorizedMatterEditor(matterId: string) {
-  const session = await getCurrentUser();
-  if (!session) throw new ActionError("Sign in to continue.");
-  const db = getDb();
-  const user = await db.user.findFirst({
-    where: { id: session.id, firmId: session.firmId, active: true },
-    include: { role: { include: { permissions: true } }, firm: { select: { name: true } } },
-  });
-  if (!user || !hasPermission(user, "matters", "Edit")) throw new ActionError("Matter edit permission is required.");
-  const matter = await db.matter.findFirst({ where: { id: matterId, firmId: user.firmId }, select: { id: true, matterNumber: true, responsibleId: true } });
-  if (!matter) throw new ActionError("Matter not found in this firm.");
-  const scope = permissionScope(user, "matters");
-  const reports = scope === "Team" ? await db.supervisorLink.findMany({
-    where: { firmId: user.firmId, supervisorId: user.id, user: { active: true } },
-    select: { userId: true },
-  }) : [];
-  if (!canAccessRecord({ userId: user.id, owner: user.isOwner, scope, assignedUserId: matter.responsibleId, directReportIds: reports.map((item) => item.userId) })) {
-    throw new ActionError("This matter is outside your permitted scope.");
-  }
-  return { user, matter, db };
 }
 
 export async function createClientPortalUpdate(_state: string | null, form: FormData): Promise<string | null> {

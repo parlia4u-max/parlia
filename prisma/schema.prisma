@@ -107,6 +107,8 @@ model Firm {
   consultationRequests ConsultationRequest[]
   possibleBillings PossibleBilling[]
   matterDocuments MatterDocument[]
+  invoices Invoice[]
+  paymentProofs PaymentProof[]
   documentViews ClientDocumentView[]
   portalAccessRequests PortalAccessRequest[]
   staffSeatLimit  Int?
@@ -379,6 +381,7 @@ model Matter {
   clientStepEstimates Json?
   possibleBillings  PossibleBilling[]
   matterDocuments   MatterDocument[]
+  invoices          Invoice[]
   matterType        String
   stage             String
   stageKind         MatterStageKind @default(A)
@@ -656,6 +659,7 @@ model ClientPortalAccount {
   invitations  ClientPortalInvitation[]
   submissions  ClientDocumentReference[]
   introSeenAt  DateTime?
+  paymentProofs PaymentProof[]
   documentViews ClientDocumentView[]
 
   @@unique([id, firmId])
@@ -1323,4 +1327,59 @@ model ClientDocumentView {
   viewedAt   DateTime             @default(now())
 
   @@index([firmId, documentId])
+}
+
+enum InvoiceStatus {
+  Unpaid
+  PartPaid
+  Paid
+}
+
+enum PaymentProofStatus {
+  Submitted
+  Confirmed
+  Rejected
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  firmId        String
+  firm          Firm          @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matterId      String
+  matter        Matter        @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: Cascade)
+  number        String
+  issueDate     DateTime
+  amountCents   Int
+  status        InvoiceStatus @default(Unpaid)
+  documentUrl   String
+  publishedAt   DateTime?
+  creditNoteForId String?
+  createdById   String
+  createdAt     DateTime      @default(now())
+  proofs        PaymentProof[]
+
+  @@unique([id, firmId])
+  @@unique([firmId, number])
+  @@index([firmId, matterId, publishedAt])
+}
+
+model PaymentProof {
+  id           String              @id @default(cuid())
+  firmId       String
+  firm         Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  invoiceId    String
+  invoice      Invoice             @relation(fields: [invoiceId, firmId], references: [id, firmId], onDelete: Cascade)
+  clientId     String
+  client       ClientPortalAccount @relation(fields: [clientId, firmId], references: [id, firmId], onDelete: Cascade)
+  referenceUrl String
+  note         String?
+  status       PaymentProofStatus  @default(Submitted)
+  rejectReason String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  submittedAt  DateTime            @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, status, submittedAt])
+  @@index([firmId, invoiceId])
 }

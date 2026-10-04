@@ -7,6 +7,7 @@ import { FoundationHeader } from "@/components/foundation";
 import { getCurrentClient } from "@/lib/client-auth";
 import { getDb } from "@/lib/db";
 import { ClientTracker } from "@/components/client-tracker";
+import { ClientInvoices } from "@/components/client-invoices";
 import { clientStepsForType, computeTracker } from "@/lib/client-tracker";
 import { portalSettingsFromConfig } from "@/lib/portal-settings";
 
@@ -22,6 +23,7 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
           responsible: { select: { name: true } },
           clientPortalUpdates: { where: { firmId: client.firmId, sharedAt: { not: null } }, orderBy: { sharedAt: "desc" }, take: 100, include: { createdBy: { select: { name: true } } } },
           matterDocuments: { where: { firmId: client.firmId, sharedWithClient: true }, orderBy: { sharedAt: "desc" }, take: 100, select: { id: true, label: true, sharedAt: true } },
+          invoices: { where: { firmId: client.firmId, publishedAt: { not: null } }, orderBy: { issueDate: "desc" }, take: 200, include: { proofs: { where: { clientId: client.id }, orderBy: { submittedAt: "desc" }, take: 1 } } },
           clientDocumentReferences: { where: { firmId: client.firmId, clientId: client.id }, orderBy: { submittedAt: "desc" }, take: 100 },
         },
       },
@@ -67,6 +69,15 @@ export default async function ClientMatterPage({ params }: { params: Promise<{ i
         ))}</ul> : <p>The firm has not shared any documents with you yet.</p>}
         <p className="foundation-muted">Each time you open a document, the firm records it.</p>
       </section>
+      <ClientInvoices
+        maxMb={portalSettingsFromConfig(setup?.published).maxUploadMb}
+        types={portalSettingsFromConfig(setup?.published).allowedUploadTypes}
+        invoices={matter.invoices.map((invoice) => ({
+          id: invoice.id, number: invoice.number, issueDate: invoice.issueDate, amountCents: invoice.amountCents, status: invoice.status, documentUrl: invoice.documentUrl,
+          creditNoteForId: invoice.creditNoteForId, credited: matter.invoices.some((other) => other.creditNoteForId === invoice.id),
+          pending: invoice.proofs[0]?.status === "Submitted", rejectReason: invoice.proofs[0]?.status === "Rejected" ? invoice.proofs[0].rejectReason : null,
+        }))}
+      />
       <section className="foundation-panel">
         <h2>Submit a document reference for review</h2>
         <p className="foundation-muted">Do not upload a file here. Add a secure HTTPS link to the file in the firm’s approved document system. The firm will review the reference; Parlia stores the link and status only.</p>
