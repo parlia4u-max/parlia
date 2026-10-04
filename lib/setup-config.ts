@@ -62,8 +62,8 @@ export function createInitialSetupConfig(firmName: string): SetupConfig {
     followUpRules: { followUpAfterDays: 7, tracingAfterDays: 14, maxTracingAttempts: 3 },
     permissions: {
       roles: [
-        { name: "Lawyer", permissions: Object.fromEntries(MODULES.map((module) => [module, { level: ["matters", "tasks", "calendar"].includes(module) ? "Edit" : ["people", "reports"].includes(module) ? "View" : "None", scope: module === "matters" || module === "calendar" ? "Firm" : "Own" }])) },
-        { name: "Candidate attorney", permissions: Object.fromEntries(MODULES.map((module) => [module, { level: module === "matters" || module === "tasks" ? "Edit" : module === "calendar" || module === "people" ? "View" : "None", scope: module === "matters" ? "Team" : "Own" }])) },
+        { name: "Lawyer", permissions: Object.fromEntries(MODULES.map((module) => [module, { level: ["matters", "tasks", "calendar", "attendance"].includes(module) ? "Edit" : ["people", "reports"].includes(module) ? "View" : "None", scope: module === "matters" || module === "calendar" ? "Firm" : module === "attendance" ? "Team" : "Own" }])) },
+        { name: "Candidate attorney", permissions: Object.fromEntries(MODULES.map((module) => [module, { level: module === "matters" || module === "tasks" || module === "attendance" ? "Edit" : module === "calendar" || module === "people" ? "View" : "None", scope: module === "matters" ? "Team" : "Own" }])) },
         { name: "Admin", permissions: Object.fromEntries(MODULES.map((module) => [module, { level: module === "settings" || module === "people" ? "Edit" : module === "accounts" ? "None" : "View", scope: "Firm" }])) },
         { name: "Accounts", permissions: Object.fromEntries(MODULES.map((module) => [module, { level: module === "accounts" ? "Edit" : ["matters", "reports"].includes(module) ? "View" : "None", scope: "Firm" }])) },
         { name: "Custom", permissions: defaultPermissions },

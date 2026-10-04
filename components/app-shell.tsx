@@ -26,6 +26,7 @@ export type NavigationAccess = {
   canViewMatters: boolean;
   canViewTasks: boolean;
   canViewCalendar: boolean;
+  canViewAttendance: boolean;
   setupHrefs: string[];
 };
 
@@ -62,6 +63,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { label: "Staff", href: "/staff", icon: "people" },
       { label: "Leave and HR", href: "/leave", icon: "leave" },
+      { label: "Clock-in & attendance", href: "/attendance", icon: "clock" },
       { label: "My HR record", href: "/people/hr", icon: "people" },
       { label: "Equipment register", href: "/people/equipment", icon: "equipment" },
       { label: "Password vault", href: "/people/password-vault", icon: "passwords" },
@@ -179,6 +181,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
         if (item.href === "/matters" || item.href === "/matters/board") return navigationAccess.canViewMatters;
         if (item.href === "/tasks") return navigationAccess.canViewTasks;
         if (item.href === "/calendar") return navigationAccess.canViewCalendar;
+        if (item.href === "/attendance") return navigationAccess.canViewAttendance;
         if (item.href === "/service-tracing" || item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||

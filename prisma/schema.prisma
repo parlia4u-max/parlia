@@ -57,6 +57,15 @@ enum LeaveRequestStatus {
   Declined
 }
 
+enum AttendanceEventType {
+  ClockIn
+  LunchStart
+  LunchEnd
+  ClockOut
+  DutyCheckIn
+  DutyCheckOut
+}
+
 model Firm {
   id              String           @id @default(cuid())
   name            String
@@ -100,6 +109,8 @@ model Firm {
   equipmentAssignments EquipmentAssignment[]
   onboardingChecklistItems OnboardingChecklistItem[]
   passwordVaultEntries PasswordVaultEntry[]
+  attendanceLocations AttendanceLocation[]
+  attendanceDays AttendanceDay[]
 }
 
 model SetupConfiguration {
@@ -178,6 +189,7 @@ model User {
   equipmentAssignmentActions EquipmentAssignment[] @relation("EquipmentAssignmentAssigner")
   completedOnboardingItems OnboardingChecklistItem[]
   vaultEntriesCreated PasswordVaultEntry[]
+  attendanceDays AttendanceDay[]
 
   @@unique([email])
   @@unique([id, firmId])
@@ -494,6 +506,68 @@ model DutyRecord {
   @@unique([id, firmId])
   @@index([firmId, status, dueAt])
   @@index([firmId, assignedToId, status, dueAt])
+  attendanceEvents AttendanceEvent[]
+}
+
+model AttendanceLocation {
+  id           String            @id @default(cuid())
+  firmId       String
+  firm         Firm              @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  name         String
+  latitude     Float
+  longitude    Float
+  radiusMeters Int
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  events       AttendanceEvent[]
+
+  @@unique([id, firmId])
+  @@unique([firmId, name])
+  @@index([firmId, active])
+}
+
+model AttendanceDay {
+  id        String            @id @default(cuid())
+  firmId    String
+  firm      Firm              @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  workDate  DateTime          @db.Date
+  events    AttendanceEvent[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([id, firmId])
+  @@unique([firmId, userId, workDate])
+  @@index([firmId, workDate])
+}
+
+model AttendanceEvent {
+  id               String              @id @default(cuid())
+  firmId           String
+  dayId            String
+  day              AttendanceDay       @relation(fields: [dayId, firmId], references: [id, firmId], onDelete: Cascade)
+  type             AttendanceEventType
+  occurredAt       DateTime            @default(now())
+  locationId       String
+  location         AttendanceLocation  @relation(fields: [locationId, firmId], references: [id, firmId], onDelete: Restrict)
+  locationName     String
+  siteLatitude     Float
+  siteLongitude    Float
+  radiusMeters     Int
+  dutyId           String?
+  duty             DutyRecord?         @relation(fields: [dutyId, firmId], references: [id, firmId], onDelete: Restrict)
+  latitude         Float
+  longitude        Float
+  accuracyMeters   Float
+  distanceMeters   Float
+  createdAt        DateTime            @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, dayId, occurredAt])
+  @@index([firmId, locationId, occurredAt])
+  @@index([firmId, dutyId, occurredAt])
 }
 
 model PhysicalFile {

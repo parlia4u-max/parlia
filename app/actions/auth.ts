@@ -10,8 +10,8 @@ import { createInitialSetupConfig } from "@/lib/setup-config";
 import { hashPassword, hashToken, hashVerificationCode, normalizeEmail, randomToken, randomVerificationCode, required, requiredSecret, validEmail, verifyPassword } from "@/lib/security";
 
 const templates = [
-  { name: "Lawyer", permissions: { matters: ["Edit", "Firm"], tasks: ["Edit", "Own"], calendar: ["Edit", "Firm"], people: ["View", "Firm"], reports: ["View", "Firm"] } },
-  { name: "Candidate attorney", permissions: { matters: ["Edit", "Team"], tasks: ["Edit", "Own"], calendar: ["View", "Team"], people: ["View", "Own"] } },
+  { name: "Lawyer", permissions: { matters: ["Edit", "Firm"], tasks: ["Edit", "Own"], calendar: ["Edit", "Firm"], attendance: ["Edit", "Team"], people: ["View", "Firm"], reports: ["View", "Firm"] } },
+  { name: "Candidate attorney", permissions: { matters: ["Edit", "Team"], tasks: ["Edit", "Own"], calendar: ["View", "Team"], attendance: ["Edit", "Own"], people: ["View", "Own"] } },
   { name: "Admin", permissions: { matters: ["View", "Firm"], tasks: ["View", "Firm"], calendar: ["View", "Firm"], people: ["Edit", "Firm"], reports: ["View", "Firm"], settings: ["Edit", "Firm"] } },
   { name: "Accounts", permissions: { matters: ["View", "Firm"], reports: ["View", "Firm"], accounts: ["Edit", "Firm"] } },
   { name: "Custom", permissions: {} },

@@ -63,3 +63,15 @@ test("initial minutes setup includes the three meeting templates used by Team", 
   assert.ok(templates.every((template) => template.sections.length > 0));
   assert.doesNotThrow(() => validateSetupValue("minutesTemplates", templates));
 });
+
+test("attendance role templates grant only operationally appropriate access by default", () => {
+  const templates = createInitialSetupConfig("Example firm").permissions as {
+    roles: { name: string; permissions: Record<string, { level: string; scope: string }> }[];
+  };
+  const permission = (name: string) => templates.roles.find((role) => role.name === name)!.permissions.attendance;
+  assert.deepEqual(permission("Lawyer"), { level: "Edit", scope: "Team" });
+  assert.deepEqual(permission("Candidate attorney"), { level: "Edit", scope: "Own" });
+  assert.deepEqual(permission("Admin"), { level: "View", scope: "Firm" });
+  assert.equal(permission("Accounts").level, "None");
+  assert.deepEqual(permission("Custom"), { level: "None", scope: "Own" });
+});

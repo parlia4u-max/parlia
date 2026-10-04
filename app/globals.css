@@ -1275,4 +1275,99 @@ input:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  .attendance-current,
+  .attendance-report-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .attendance-current h2,
+  .attendance-report-heading h2 {
+    margin: 0;
+  }
+
+  .attendance-controls-grid,
+  .attendance-location-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 14px;
+    margin: 18px 0;
+  }
+
+  .attendance-control {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fffefa;
+    padding: 16px;
+  }
+
+  .attendance-control > p {
+    margin: 0;
+  }
+
+  .attendance-location-list .todo-card {
+    display: block;
+  }
+
+  .attendance-location-list .todo-card h3 {
+    margin: 4px 0;
+  }
+
+  .attendance-location-list .foundation-form {
+    margin-top: 16px;
+  }
+
+  .attendance-date-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 12px;
+    margin: 18px 0;
+  }
+
+  .attendance-date-filter .foundation-field {
+    min-width: min(190px, 100%);
+  }
+
+  .attendance-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+  }
+
+  .attendance-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fffefa;
+    text-align: left;
+  }
+
+  .attendance-table th,
+  .attendance-table td {
+    border-bottom: 1px solid var(--line);
+    padding: 11px 13px;
+    white-space: nowrap;
+  }
+
+  .attendance-table th {
+    background: #f3edde;
+    font-weight: 600;
+  }
+
+  .attendance-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  @media (max-width: 620px) {
+    .attendance-current,
+    .attendance-report-heading {
+      flex-direction: column;
+    }
+  }
 }
