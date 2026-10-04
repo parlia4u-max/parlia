@@ -1060,6 +1060,11 @@ input:focus-visible {
   background: #c3d6e6;
 }
 
+.calendar-event.calendar-meeting {
+  border-color: #b7aaca;
+  background: #d5cde6;
+}
+
 .calendar-event.calendar-duty {
   border-color: #c5ad7a;
   background: #eddfbf;

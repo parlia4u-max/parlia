@@ -13,7 +13,7 @@ type CalendarRecord = {
   title: string;
   startAt: Date;
   endAt: Date;
-  kind: "manual" | "task" | "duty";
+  kind: "manual" | "meeting" | "task" | "duty";
   audience: "Internal" | "Client";
   responsible: string;
   ownerId: string;
@@ -93,14 +93,14 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const view = validCalendarView(query.view);
   const range = calendarRange(date, view);
   const requestedTypes = query.types === undefined ? [] : Array.isArray(query.types) ? query.types : [query.types];
-  const activeTypes = (query.filtered ? requestedTypes : ["manual", "tasks", "duties"])
-    .filter((type) => (type === "manual" || type === "tasks" || type === "duties") &&
+  const activeTypes = (query.filtered ? requestedTypes : ["manual", "meetings", "tasks", "duties"])
+    .filter((type) => (type === "manual" || type === "meetings" || type === "tasks" || type === "duties") &&
       (type !== "tasks" || canViewTasks) && (type !== "duties" || canViewMatters || canViewTasks));
   const requestedAudiences = query.audience === undefined ? [] : Array.isArray(query.audience) ? query.audience : [query.audience];
   const activeAudiences = query.audienceFiltered
     ? requestedAudiences.filter((audience) => audience === "Internal" || audience === "Client")
     : ["Internal", "Client"];
-  const [manualEvents, tasks, matters, dutyMatterIds] = await Promise.all([
+  const [manualEvents, meetings, tasks, matters, dutyMatterIds] = await Promise.all([
     activeTypes.includes("manual") ? db.calendarEvent.findMany({
       where: {
         firmId: user.firmId,
@@ -116,6 +116,22 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         documents: { orderBy: { createdAt: "asc" }, select: { label: true, url: true } },
       },
       orderBy: { startAt: "asc" },
+      take: 500,
+    }) : [],
+    activeTypes.includes("meetings") ? db.teamMeeting.findMany({
+      where: {
+        firmId: user.firmId,
+        startsAt: { gte: range.start, lt: range.end },
+        OR: [
+          { createdById: { in: ownerIds } },
+          { participants: { some: { firmId: user.firmId, userId: { in: ownerIds } } } },
+        ],
+      },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        participants: { where: { firmId: user.firmId }, include: { user: { select: { name: true } } } },
+      },
+      orderBy: { startsAt: "asc" },
       take: 500,
     }) : [],
     activeTypes.includes("tasks") ? db.task.findMany({
@@ -171,6 +187,24 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       description: event.description, checklist: event.checklist, documents: event.documents, createdById: event.createdById,
       attendees: event.attendees.map((item) => item.user.name),
     })),
+    ...meetings.map((meeting) => ({
+      id: `meeting-${meeting.id}`,
+      title: meeting.title,
+      startAt: meeting.startsAt,
+      endAt: meeting.startsAt,
+      kind: "meeting" as const,
+      audience: "Internal" as const,
+      responsible: meeting.createdBy.name,
+      ownerId: meeting.createdById,
+      matterId: meeting.matterId && matterById.has(meeting.matterId) ? meeting.matterId : null,
+      matterNumber: meeting.matterId ? matterById.get(meeting.matterId)?.matterNumber ?? null : null,
+      meetingUrl: null,
+      description: `${meeting.templateName}${meeting.urgent ? " · Urgent" : ""}`,
+      checklist: [],
+      documents: [],
+      createdById: meeting.createdById,
+      attendees: meeting.participants.map((participant) => participant.user.name),
+    })),
     ...tasks.map((task) => ({
       id: `task-${task.id}`, taskId: task.id, title: task.title, startAt: task.dueAt!, endAt: task.dueAt!,
       kind: "task" as const, audience: "Internal" as const, responsible: task.assignedTo.name, ownerId: task.assignedToId,
@@ -186,7 +220,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       matterNumber: duty.matter ? matterById.get(duty.matter.id)?.matterNumber ?? null : null,
       meetingUrl: null, description: `Duty method: ${duty.method}`, checklist: [], documents: [], createdById: "", attendees: [],
     })),
-  ].filter((event) => event.kind === "task" || event.kind === "duty" ? activeAudiences.includes("Internal") : activeAudiences.includes(event.audience))
+  ].filter((event) => event.kind === "task" || event.kind === "duty" || event.kind === "meeting" ? activeAudiences.includes("Internal") : activeAudiences.includes(event.audience))
     .sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
   const calendarDays: Date[] = [];
   if (view === "month") {
@@ -254,7 +288,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               {ownerIds.map((id) => <input key={id} type="hidden" name="calendars" value={id} />)}
               <input type="hidden" name="filtered" value="1" />
               <input type="hidden" name="audienceFiltered" value="1" />
-              <label className="calendar-filter"><input type="checkbox" name="types" value="manual" defaultChecked={activeTypes.includes("manual")} /> Meetings and events</label>
+              <label className="calendar-filter"><input type="checkbox" name="types" value="manual" defaultChecked={activeTypes.includes("manual")} /> Events</label>
+              <label className="calendar-filter"><input type="checkbox" name="types" value="meetings" defaultChecked={activeTypes.includes("meetings")} /> Team meetings</label>
               {canViewTasks ? <label className="calendar-filter"><input type="checkbox" name="types" value="tasks" defaultChecked={activeTypes.includes("tasks")} /> Task due dates</label> : null}
               {canViewMatters || canViewTasks ? <label className="calendar-filter"><input type="checkbox" name="types" value="duties" defaultChecked={activeTypes.includes("duties")} /> Scheduled duty dates</label> : null}
               <label className="calendar-filter"><input type="checkbox" name="audience" value="Internal" defaultChecked={activeAudiences.includes("Internal")} /> Internal events</label>

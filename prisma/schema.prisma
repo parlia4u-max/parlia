@@ -70,6 +70,14 @@ model Firm {
   serviceTraces ServiceTrace[]
   duties DutyRecord[]
   physicalFiles PhysicalFile[]
+  teamConversations TeamConversation[]
+  teamMessages TeamMessage[]
+  conversationMembers TeamConversationMember[]
+  meetings TeamMeeting[]
+  meetingParticipants TeamMeetingParticipant[]
+  meetingActionItems TeamMeetingActionItem[]
+  suggestions TeamSuggestion[]
+  employeeVotes TeamEmployeeVote[]
 }
 
 model SetupConfiguration {
@@ -125,6 +133,15 @@ model User {
   createdDuties DutyRecord[] @relation("DutyCreator")
   assignedDuties DutyRecord[] @relation("DutyAssignee")
   physicalFileCheckouts PhysicalFile[] @relation("PhysicalFileBorrower")
+  conversationsCreated TeamConversation[] @relation("ConversationCreator")
+  conversationMemberships TeamConversationMember[]
+  sentTeamMessages TeamMessage[] @relation("TeamMessageSender")
+  createdMeetings TeamMeeting[] @relation("MeetingCreator")
+  meetingParticipations TeamMeetingParticipant[]
+  meetingActionItemsCreated TeamMeetingActionItem[] @relation("MeetingActionCreator")
+  submittedSuggestions TeamSuggestion[] @relation("SuggestionSubmitter")
+  employeeVotesCast TeamEmployeeVote[] @relation("EmployeeVoteVoter")
+  employeeVotesReceived TeamEmployeeVote[] @relation("EmployeeVoteNominee")
 
   @@unique([email])
   @@unique([id, firmId])
@@ -279,6 +296,8 @@ model Matter {
   serviceRecords    ServiceRecord[]
   duties            DutyRecord[]
   physicalFile      PhysicalFile?
+  teamMessages      TeamMessage[]
+  meetings          TeamMeeting[]
 
   @@unique([id, firmId])
   @@unique([firmId, matterNumber])
@@ -308,6 +327,8 @@ model Task {
   nudges          TaskNudge[]
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+  convertedMessage TeamMessage? @relation("MessageTask")
+  meetingActionItem TeamMeetingActionItem?
 
   @@unique([id, firmId])
   @@index([firmId, assignedToId, status, dueAt])
@@ -535,4 +556,142 @@ model CalendarEventDocumentReference {
   createdAt DateTime      @default(now())
 
   @@index([firmId, eventId, createdAt])
+}
+
+model TeamConversation {
+  id        String                    @id @default(cuid())
+  firmId    String
+  firm      Firm                      @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  title     String?
+  kind      String
+  createdById String
+  createdBy User                      @relation("ConversationCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  members   TeamConversationMember[]
+  messages  TeamMessage[]
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, updatedAt])
+}
+
+model TeamConversationMember {
+  id             String           @id @default(cuid())
+  firmId         String
+  firm           Firm             @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   TeamConversation @relation(fields: [conversationId, firmId], references: [id, firmId], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([firmId, userId, conversationId])
+}
+
+model TeamMessage {
+  id             String           @id @default(cuid())
+  firmId         String
+  firm           Firm             @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   TeamConversation @relation(fields: [conversationId, firmId], references: [id, firmId], onDelete: Cascade)
+  senderId       String
+  sender         User             @relation("TeamMessageSender", fields: [senderId, firmId], references: [id, firmId], onDelete: Restrict)
+  body           String
+  matterId       String?
+  matter         Matter?          @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: NoAction)
+  urgent         Boolean          @default(false)
+  taskId         String?
+  task           Task?            @relation("MessageTask", fields: [taskId, firmId], references: [id, firmId], onDelete: NoAction)
+  createdAt      DateTime         @default(now())
+
+  @@unique([id, firmId])
+  @@unique([taskId, firmId])
+  @@index([firmId, conversationId, createdAt])
+  @@index([firmId, matterId, createdAt])
+}
+
+model TeamMeeting {
+  id           String                    @id @default(cuid())
+  firmId       String
+  firm         Firm                      @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  title        String
+  startsAt     DateTime
+  templateName String
+  matterId     String?
+  matter       Matter?                   @relation(fields: [matterId, firmId], references: [id, firmId], onDelete: NoAction)
+  minutes      Json?
+  urgent       Boolean                   @default(false)
+  createdById  String
+  createdBy    User                      @relation("MeetingCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Restrict)
+  participants TeamMeetingParticipant[]
+  actionItems  TeamMeetingActionItem[]
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, startsAt])
+  @@index([firmId, matterId, startsAt])
+}
+
+model TeamMeetingParticipant {
+  id        String     @id @default(cuid())
+  firmId    String
+  firm      Firm       @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  meetingId String
+  meeting   TeamMeeting @relation(fields: [meetingId, firmId], references: [id, firmId], onDelete: Cascade)
+  userId    String
+  user      User       @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@index([firmId, userId, meetingId])
+}
+
+model TeamMeetingActionItem {
+  id           String      @id @default(cuid())
+  firmId       String
+  firm         Firm        @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  meetingId    String
+  meeting      TeamMeeting @relation(fields: [meetingId, firmId], references: [id, firmId], onDelete: Cascade)
+  title        String
+  assignedToId String
+  assignedTo   User        @relation("MeetingActionCreator", fields: [assignedToId, firmId], references: [id, firmId], onDelete: Restrict)
+  taskId       String?
+  task         Task?       @relation(fields: [taskId, firmId], references: [id, firmId], onDelete: NoAction)
+  createdAt    DateTime    @default(now())
+
+  @@unique([id, firmId])
+  @@unique([taskId, firmId])
+  @@index([firmId, meetingId, createdAt])
+}
+
+model TeamSuggestion {
+  id          String   @id @default(cuid())
+  firmId      String
+  firm        Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  submitterId String?
+  submitter   User?    @relation("SuggestionSubmitter", fields: [submitterId, firmId], references: [id, firmId], onDelete: NoAction)
+  anonymous   Boolean  @default(false)
+  category    String
+  body        String
+  status      String   @default("Open")
+  createdAt   DateTime @default(now())
+
+  @@unique([id, firmId])
+  @@index([firmId, status, createdAt])
+}
+
+model TeamEmployeeVote {
+  id        String   @id @default(cuid())
+  firmId    String
+  firm      Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  period    String
+  voterId   String
+  voter     User     @relation("EmployeeVoteVoter", fields: [voterId, firmId], references: [id, firmId], onDelete: Cascade)
+  nomineeId String
+  nominee   User     @relation("EmployeeVoteNominee", fields: [nomineeId, firmId], references: [id, firmId], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([firmId, period, voterId])
+  @@index([firmId, period, nomineeId])
 }

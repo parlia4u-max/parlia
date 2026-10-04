@@ -56,3 +56,10 @@ test("matter stages preserve A/W/C/X kinds and validate configured stage tasks",
 test("task setup contains only the six supported Module C categories", () => {
   assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["Research"] }]), /configured categories/);
 });
+
+test("initial minutes setup includes the three meeting templates used by Team", () => {
+  const templates = createInitialSetupConfig("Example firm").minutesTemplates as { name: string; sections: string[] }[];
+  assert.deepEqual(templates.map((template) => template.name), ["Template A", "Template B", "Template C"]);
+  assert.ok(templates.every((template) => template.sections.length > 0));
+  assert.doesNotThrow(() => validateSetupValue("minutesTemplates", templates));
+});

@@ -33,6 +33,27 @@ const menuGroups: MenuGroup[] = [
     label: "MY DAY",
     items: [
       { label: "Dashboard", href: "/", icon: "home" },
+      { label: "My to-do", href: "/tasks", icon: "tasks" },
+    ],
+  },
+  {
+    label: "MATTERS",
+    items: [
+      { label: "Matters", href: "/matters", icon: "matter" },
+      { label: "Stages board", href: "/matters/board", icon: "filing" },
+      { label: "Calendar", href: "/calendar", icon: "calendar" },
+      { label: "Service & tracing", href: "/service-tracing", icon: "service" },
+      { label: "Duties", href: "/duties", icon: "filing" },
+      { label: "Physical files", href: "/physical-files", icon: "filing" },
+    ],
+  },
+  {
+    label: "TEAM",
+    items: [
+      { label: "Team messages", href: "/team/messages", icon: "messages" },
+      { label: "Meetings & minutes", href: "/team/meetings", icon: "meetings" },
+      { label: "Team suggestions", href: "/team/suggestions", icon: "suggestions" },
+      { label: "Employee of the month", href: "/team/recognition", icon: "people" },
     ],
   },
   {
@@ -40,18 +61,6 @@ const menuGroups: MenuGroup[] = [
     items: [
       { label: "Staff", href: "/staff", icon: "people" },
       { label: "Help Center", href: "/help", icon: "messages" },
-    ],
-  },
-  {
-    label: "WORK",
-    items: [
-      { label: "Matters", href: "/matters", icon: "matter" },
-      { label: "Stages board", href: "/matters/board", icon: "filing" },
-      { label: "My to-do", href: "/tasks", icon: "tasks" },
-      { label: "Calendar", href: "/calendar", icon: "calendar" },
-      { label: "Service & tracing", href: "/service-tracing", icon: "service" },
-      { label: "Duties", href: "/duties", icon: "filing" },
-      { label: "Physical files", href: "/physical-files", icon: "filing" },
     ],
   },
   {
@@ -158,6 +167,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
       ...group,
       items: group.items.filter((item) => {
         if (item.href === "/staff") return navigationAccess.canViewPeople;
+        if (item.href.startsWith("/team/")) return navigationAccess.canViewPeople;
         if (item.href === "/matters" || item.href === "/matters/board") return navigationAccess.canViewMatters;
         if (item.href === "/tasks") return navigationAccess.canViewTasks;
         if (item.href === "/calendar") return navigationAccess.canViewCalendar;

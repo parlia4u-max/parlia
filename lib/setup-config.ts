@@ -84,8 +84,9 @@ export function createInitialSetupConfig(firmName: string): SetupConfig {
       formFields: ["Leave type", "Start date", "End date", "Reason", "Covering colleague"],
     },
     minutesTemplates: [
-      { name: "Client meeting", sections: ["Attendees", "Discussion", "Advice", "Actions", "Next meeting"] },
-      { name: "Internal meeting", sections: ["Attendees", "Agenda", "Decisions", "Actions"] },
+      { name: "Template A", sections: ["Attendees", "Purpose", "Discussion", "Decisions", "Actions"] },
+      { name: "Template B", sections: ["Attendees", "Agenda", "Discussion", "Actions"] },
+      { name: "Template C", sections: ["Attendees", "Updates", "Discussion", "Next steps"] },
     ],
     hrChecklist: [
       { name: "Identity and contact details", required: true },
