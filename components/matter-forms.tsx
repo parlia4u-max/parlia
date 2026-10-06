@@ -89,6 +89,6 @@ export function MatterFieldForm({
   return <ActionForm action={action} className={className}><input type="hidden" name="matterId" value={matterId} />{children}<SubmitButton>Save</SubmitButton></ActionForm>;
 }
 
-export function TaskCategories({ categories }: { categories: typeof TASK_CATEGORIES[number][] }) {
+export function TaskCategories({ categories }: { categories: string[] }) {
   return <label className="foundation-field"><span>Category</span><select name="category" required>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>;
 }

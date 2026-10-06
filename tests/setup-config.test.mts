@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createInitialSetupConfig, SETUP_SECTIONS, validateSetupValue } from "../lib/setup-config.ts";
+import { matterTypesFromConfig, taskCategoriesFromConfig } from "../lib/matter-config.ts";
 
 test("all seeded setup sections pass server-side validation", () => {
   const config = createInitialSetupConfig("Example firm");
@@ -40,7 +41,7 @@ test("setup list validation rejects impossible dates and duplicate role names", 
   }), /unique/);
 });
 
-test("matter stages preserve A/W/C/X kinds and validate configured stage tasks", () => {
+test("matter stages preserve A/W/C/X kinds and allow configured custom task categories", () => {
   const config = createInitialSetupConfig("Example firm");
   const matterTypes = structuredClone(config.matterTypes) as { name: string; stages: { name: string; kind: string; tasks: { title: string; category: string; dueInDays?: number }[] }[] }[];
   matterTypes[0].stages[0] = {
@@ -50,11 +51,26 @@ test("matter stages preserve A/W/C/X kinds and validate configured stage tasks",
   };
   assert.doesNotThrow(() => validateSetupValue("matterTypes", matterTypes));
   assert.throws(() => validateSetupValue("matterTypes", [{ name: "Test", stages: [{ name: "Broken", kind: "Waiting", tasks: [] }] }]), /A, W, C or X/);
-  assert.throws(() => validateSetupValue("matterTypes", [{ name: "Test", stages: [{ name: "Broken", kind: "A", tasks: [{ title: "Task", category: "Research" }] }] }]), /supported task category/);
+  assert.doesNotThrow(() => validateSetupValue("matterTypes", [{ name: "Test", stages: [{ name: "Broken", kind: "A", tasks: [{ title: "Task", category: "Research" }] }] }]));
+  assert.throws(() => validateSetupValue("matterTypes", [{ name: "Test", stages: [{ name: "Broken", kind: "A", tasks: [{ title: "Task", category: " " }] }] }]), /cannot be blank/);
 });
 
-test("task setup contains only the six supported Module C categories", () => {
-  assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["Research"] }]), /configured categories/);
+test("task setup accepts custom categories and validates their subcategories", () => {
+  assert.doesNotThrow(() => validateSetupValue("taskTypes", [{ name: "Work", categories: [" Research ", "Drafting"], subcategories: { Research: ["Case law", "Interviews"] } }]));
+  assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["Research", " research "] }]), /unique/);
+  assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["  "] }]), /cannot be blank/);
+  assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["Research"], subcategories: { Other: ["Case law"] } }]), /belong to an existing/);
+  assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["Research"], subcategories: { Research: ["Case law", " case law "] } }]), /unique/);
+  assert.throws(() => validateSetupValue("taskTypes", [{ name: "Work", categories: ["Research"], subcategories: { Research: [""] } }]), /cannot be blank/);
+});
+
+test("task config readers retain custom categories and normalize category names", () => {
+  assert.deepEqual(taskCategoriesFromConfig({ taskTypes: [{ categories: [" Research ", "Drafting", "research", ""] }] }), ["Research", "Drafting"]);
+  assert.deepEqual(taskCategoriesFromConfig({ taskTypes: [{ categories: [] }] }), []);
+  assert.deepEqual(taskCategoriesFromConfig({}), ["Drafting", "Court runs", "Tasks", "Follow up", "Updates internal", "Updates external"]);
+  assert.deepEqual(matterTypesFromConfig({ matterTypes: [{ name: " Litigation ", stages: [{ name: " Review ", tasks: [{ title: " Research ", category: " Custom ", dueInDays: 2 }] }] }] }), [
+    { name: "Litigation", stages: [{ name: "Review", kind: "A", tasks: [{ title: "Research", category: "Custom", dueInDays: 2 }] }] },
+  ]);
 });
 
 test("initial minutes setup includes the three meeting templates used by Team", () => {

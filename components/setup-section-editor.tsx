@@ -14,6 +14,14 @@ type Supervisor = { id: string; name: string; email: string };
 const text = (value: unknown) => typeof value === "string" ? value : "";
 const number = (value: unknown) => typeof value === "number" ? value : 0;
 const list = (value: unknown): any[] => Array.isArray(value) ? value : [];
+const SUBCATEGORY_SUGGESTIONS: Record<string, string[]> = {
+  Drafting: ["Pleadings", "Affidavits", "Agreements"],
+  "Court runs": ["Filing", "Collections", "Court documents"],
+  Tasks: ["Research", "Document review", "Client communication"],
+  "Follow up": ["Client follow-up", "Sheriff update", "Service update"],
+  "Updates internal": ["Matter update", "Team update"],
+  "Updates external": ["Client update", "Third-party update"],
+};
 
 function TextField({
   label,
@@ -34,6 +42,25 @@ function TextField({
       <input type={type} value={text(value)} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
+}
+
+function SelectOrCustomField({ label, value, options, onChange }: { label: string; value: unknown; options: string[]; onChange: (value: string) => void }) {
+  const [custom, setCustom] = useState(Boolean(text(value)) && !options.includes(text(value)));
+  return <>
+    <label className="foundation-field">
+      <span>{label}</span>
+      <select value={custom ? "__other__" : text(value)} onChange={(event) => {
+        const next = event.target.value;
+        setCustom(next === "__other__");
+        if (next !== "__other__") onChange(next);
+      }}>
+        <option value="">Select {label.toLowerCase()}</option>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        <option value="__other__">Other</option>
+      </select>
+    </label>
+    {custom ? <TextField label={`Custom ${label.toLowerCase()}`} value={options.includes(text(value)) ? "" : value} maxLength={120} onChange={onChange} /> : null}
+  </>;
 }
 
 function NumberField({
@@ -184,17 +211,34 @@ export function SetupSectionEditor({
                 {(isMatter ? normalizedStages(row[nested]) : list(row[nested])).map((entry, childIndex) => (
                   <div className="setup-edit-card" key={`${nested}-${childIndex}`}>
                     <div className="setup-edit-row">
-                      <TextField label={`${nested.slice(0, -1)} ${childIndex + 1}`} value={isMatter ? entry.name : entry} maxLength={120} onChange={(next) => {
+                      {isTask ? <SelectOrCustomField label={`Category ${childIndex + 1}`} value={entry} options={[...TASK_CATEGORIES]} onChange={(next) => {
+                        const categories = [...list(row[nested])];
+                        const previous = text(categories[childIndex]);
+                        categories[childIndex] = next;
+                        const subcategories = { ...row.subcategories };
+                        if (previous !== next && Object.hasOwn(subcategories, previous)) {
+                          subcategories[next] = subcategories[previous];
+                          delete subcategories[previous];
+                        }
+                        updateRow(key, index, { ...row, [nested]: categories, subcategories });
+                      }} /> : <TextField label={`${nested.slice(0, -1)} ${childIndex + 1}`} value={isMatter ? entry.name : entry} maxLength={120} onChange={(next) => {
                         const children = isMatter ? normalizedStages(row[nested]) : [...list(row[nested])];
                         children[childIndex] = isMatter ? { ...entry, name: next } : next;
                         updateRow(key, index, { ...row, [nested]: children });
-                      }} />
+                      }} />}
                       {isMatter ? <label className="foundation-field"><span>Stage kind</span><select value={entry.kind} onChange={(event) => {
                         const children = normalizedStages(row[nested]);
                         children[childIndex] = { ...entry, kind: event.target.value };
                         updateRow(key, index, { ...row, [nested]: children });
                       }}>{STAGE_KINDS.map((kind) => <option key={kind} value={kind}>{kind}</option>)}</select></label> : null}
-                      <RemoveButton label={`Remove ${nested.slice(0, -1)} ${childIndex + 1}`} onClick={() => updateRow(key, index, { ...row, [nested]: (isMatter ? normalizedStages(row[nested]) : list(row[nested])).filter((_, child) => child !== childIndex) })} />
+                      <RemoveButton label={`Remove ${nested.slice(0, -1)} ${childIndex + 1}`} onClick={() => {
+                        const children = (isMatter ? normalizedStages(row[nested]) : list(row[nested])).filter((_, child) => child !== childIndex);
+                        if (isTask) {
+                          const subcategories = { ...row.subcategories };
+                          delete subcategories[text(entry)];
+                          updateRow(key, index, { ...row, [nested]: children, subcategories });
+                        } else updateRow(key, index, { ...row, [nested]: children });
+                      }} />
                     </div>
                     {isMatter ? <div className="setup-nested-list">
                       <h5>Tasks created when this stage begins</h5>
@@ -207,13 +251,13 @@ export function SetupSectionEditor({
                             children[childIndex] = { ...entry, tasks };
                             updateRow(key, index, { ...row, [nested]: children });
                           }} />
-                          <label className="foundation-field"><span>Category</span><select value={task.category} onChange={(event) => {
+                          <SelectOrCustomField label="Category" value={task.category} options={[...TASK_CATEGORIES]} onChange={(next) => {
                             const children = normalizedStages(row[nested]);
                             const tasks = [...list(entry.tasks)];
-                            tasks[taskIndex] = { ...task, category: event.target.value };
+                            tasks[taskIndex] = { ...task, category: next };
                             children[childIndex] = { ...entry, tasks };
                             updateRow(key, index, { ...row, [nested]: children });
-                          }}>{TASK_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label>
+                          }} />
                           <label className="foundation-field"><span>Due in days (optional)</span><input aria-label="Task due in days (optional)" type="number" min={0} max={3650} value={task.dueInDays ?? ""} onChange={(event) => {
                             const children = normalizedStages(row[nested]);
                             const tasks = [...list(entry.tasks)];
@@ -234,9 +278,28 @@ export function SetupSectionEditor({
                         updateRow(key, index, { ...row, [nested]: children });
                       }} type="button">Add stage task</button>
                     </div> : null}
+                    {isTask ? (() => {
+                      const categoryName = text(entry);
+                      const subcategories = list(row.subcategories?.[categoryName]);
+                      const updateSubcategory = (subIndex: number, next: string) => {
+                        const updated = [...subcategories];
+                        updated[subIndex] = next;
+                        updateRow(key, index, { ...row, subcategories: { ...row.subcategories, [categoryName]: updated } });
+                      };
+                      return <div className="setup-nested-list">
+                        <h5>Subcategories</h5>
+                        {subcategories.map((subcategory, subIndex) => (
+                          <div className="setup-edit-row" key={`subcategory-${childIndex}-${subIndex}`}>
+                            <SelectOrCustomField label={`Subcategory ${subIndex + 1}`} value={subcategory} options={SUBCATEGORY_SUGGESTIONS[categoryName] ?? []} onChange={(next) => updateSubcategory(subIndex, next)} />
+                            <RemoveButton label={`Remove subcategory ${subIndex + 1}`} onClick={() => updateRow(key, index, { ...row, subcategories: { ...row.subcategories, [categoryName]: subcategories.filter((_, item) => item !== subIndex) } })} />
+                          </div>
+                        ))}
+                        <button className="button-secondary" onClick={() => updateRow(key, index, { ...row, subcategories: { ...row.subcategories, [categoryName]: [...subcategories, ""] } })} type="button">Add subcategory</button>
+                      </div>;
+                    })() : null}
                   </div>
                 ))}
-                <button className="button-secondary" onClick={() => updateRow(key, index, { ...row, [nested]: isMatter ? [...normalizedStages(row[nested]), { name: "", kind: "A", tasks: [] }] : [...list(row[nested]), ""] })} type="button">Add {nested.slice(0, -1)}</button>
+                <button className="button-secondary" onClick={() => updateRow(key, index, { ...row, [nested]: isMatter ? [...normalizedStages(row[nested]), { name: "", kind: "A", tasks: [] }] : [...list(row[nested]), ""] })} type="button">Add {isTask ? "category" : nested.slice(0, -1)}</button>
               </div>
                               {isMatter ? (() => {
                                 const stageNames = normalizedStages(row.stages).map((stage) => String(stage.name)).filter(Boolean);

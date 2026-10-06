@@ -1,4 +1,4 @@
-import { TASK_CATEGORIES, type SetupConfig } from "@/lib/setup-config";
+import { TASK_CATEGORIES, type SetupConfig } from "./setup-config.ts";
 
 export type StageTaskDefinition = { title: string; category: string; dueInDays?: number };
 export type MatterStageDefinition = { name: string; kind: "A" | "W" | "C" | "X"; tasks: StageTaskDefinition[] };
@@ -20,8 +20,8 @@ export function matterTypesFromConfig(published: unknown): MatterTypeDefinition[
       const kind = ["A", "W", "C", "X"].includes(String(stage.kind)) ? stage.kind as MatterStageDefinition["kind"] : "A";
       const tasks = Array.isArray(stage.tasks) ? stage.tasks.flatMap((rawTask): StageTaskDefinition[] => {
         const task = record(rawTask);
-        if (typeof task.title !== "string" || !task.title.trim() || typeof task.category !== "string" || !TASK_CATEGORIES.includes(task.category as typeof TASK_CATEGORIES[number])) return [];
-        return [{ title: task.title.trim(), category: task.category, ...(Number.isInteger(task.dueInDays) && Number(task.dueInDays) >= 0 ? { dueInDays: Number(task.dueInDays) } : {}) }];
+        if (typeof task.title !== "string" || !task.title.trim() || typeof task.category !== "string" || !task.category.trim()) return [];
+        return [{ title: task.title.trim(), category: task.category.trim(), ...(Number.isInteger(task.dueInDays) && Number(task.dueInDays) >= 0 ? { dueInDays: Number(task.dueInDays) } : {}) }];
       }) : [];
       return [{ name: stage.name.trim(), kind, tasks }];
     });
@@ -35,9 +35,12 @@ export function taskCategoriesFromConfig(published: unknown) {
   const categories = taskTypes.flatMap((rawType) => {
     const taskType = record(rawType);
     return Array.isArray(taskType.categories) ? taskType.categories : [];
-  }).filter((category): category is typeof TASK_CATEGORIES[number] =>
-    typeof category === "string" && TASK_CATEGORIES.includes(category as typeof TASK_CATEGORIES[number]));
-  return [...new Set(categories)];
+  }).filter((category): category is string => typeof category === "string")
+    .map((category) => category.trim())
+    .filter(Boolean);
+  const unique = new Map<string, string>();
+  for (const category of categories) unique.set(category.toLowerCase(), unique.get(category.toLowerCase()) ?? category);
+  return [...unique.values()];
 }
 
 export function setupSectionFromConfig(published: unknown, key: string) {

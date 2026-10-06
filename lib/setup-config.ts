@@ -207,7 +207,7 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
             text(task.title, "Stage task title", 160);
             text(task.category, "Stage task category", 40);
             if (!String(task.title).trim()) throw new ActionError("Stage task titles cannot be blank.");
-            if (!TASK_CATEGORIES.includes(String(task.category) as typeof TASK_CATEGORIES[number])) throw new ActionError("Choose a supported task category.");
+            if (!String(task.category).trim()) throw new ActionError("Stage task categories cannot be blank.");
             if (task.dueInDays !== undefined) positiveNumber(task.dueInDays, "Stage task due-in days", 3650);
           }
         }
@@ -224,12 +224,22 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
         text(taskType.name, "Task type name", 120);
         if (!String(taskType.name).trim()) throw new ActionError("Task type names cannot be blank.");
         names.push(String(taskType.name).trim().toLowerCase());
-        const categories = array(taskType.categories, "Task categories", TASK_CATEGORIES.length).map((category) => {
+        const categories = array(taskType.categories, "Task categories").map((category) => {
           text(category, "Task category", 40);
-          if (!TASK_CATEGORIES.includes(String(category) as typeof TASK_CATEGORIES[number])) throw new ActionError("Task categories must use the configured categories: Drafting, Court runs, Tasks, Follow up, Updates internal or Updates external.");
           return String(category).trim().toLowerCase();
         });
+        if (categories.some((category) => !category)) throw new ActionError("Task categories cannot be blank.");
         if (new Set(categories).size !== categories.length) throw new ActionError("Task categories must be unique within each task type.");
+        const subcategories = taskType.subcategories === undefined ? {} : object(taskType.subcategories, "Task subcategories");
+        for (const [category, rawSubcategories] of Object.entries(subcategories)) {
+          if (!categories.includes(category.trim().toLowerCase())) throw new ActionError(`Subcategories must belong to an existing task category: ${category}.`);
+          const names = array(rawSubcategories, `Subcategories for ${category}`, 100).map((subcategory) => {
+            text(subcategory, "Task subcategory", 120);
+            return String(subcategory).trim().toLowerCase();
+          });
+          if (names.some((name) => !name)) throw new ActionError("Task subcategories cannot be blank.");
+          if (new Set(names).size !== names.length) throw new ActionError(`Task subcategories for ${category} must be unique.`);
+        }
       }
       if (new Set(names).size !== names.length) throw new ActionError("Task type names must be unique.");
       break;
