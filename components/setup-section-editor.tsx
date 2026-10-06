@@ -6,7 +6,7 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { MODULES, MODULE_LABELS } from "@/lib/permissions";
 import { defaultClientSteps } from "@/lib/client-tracker";
 import { PORTAL_NOTIFICATION_KEYS } from "@/lib/portal-settings";
-import { STAGE_KINDS, TASK_CATEGORIES, type SetupSectionKey } from "@/lib/setup-config";
+import { MINUTES_TEMPLATE_LAYOUTS, STAGE_KINDS, TASK_CATEGORIES, type SetupSectionKey } from "@/lib/setup-config";
 
 type SetupValue = Record<string, any>;
 type Supervisor = { id: string; name: string; email: string };
@@ -206,6 +206,7 @@ export function SetupSectionEditor({
                 <TextField label="Name" value={row.name} maxLength={120} onChange={(next) => updateRow(key, index, { ...row, name: next })} />
                 <RemoveButton label={`Remove ${label.slice(0, -1).toLowerCase()} ${index + 1}`} onClick={() => removeRow(key, index)} />
               </div>
+              {section === "minutesTemplates" ? <label className="foundation-field"><span>Visual layout</span><select value={row.layout ?? MINUTES_TEMPLATE_LAYOUTS[index % MINUTES_TEMPLATE_LAYOUTS.length]} onChange={(event) => updateRow(key, index, { ...row, layout: event.target.value })}>{MINUTES_TEMPLATE_LAYOUTS.map((layout) => <option key={layout} value={layout}>{layout[0].toUpperCase() + layout.slice(1)}</option>)}</select></label> : null}
               <div className="setup-nested-list">
                 <h4>{nested === "stages" ? "Stages" : nested === "categories" ? "Categories" : "Template sections"}</h4>
                 {(isMatter ? normalizedStages(row[nested]) : list(row[nested])).map((entry, childIndex) => (

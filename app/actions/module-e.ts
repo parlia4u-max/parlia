@@ -210,19 +210,47 @@ export async function createDuty(_state: string | null, formData: FormData): Pro
     const title = requiredText(formData, "title", "Duty", 240);
     const method = requiredText(formData, "method", "Method", 40);
     if (!isDutyMethod(method)) throw new ActionError(`Choose one of: ${DUTY_METHODS.join(", ")}.`);
-    const matterId = optionalText(formData, "matterId", "Matter", 80);
-    const matter = matterId ? await requireMatter(user, matterId) : null;
+    const matter = await requireMatter(user, requiredText(formData, "matterId", "Matter reference", 80));
     const assignedToId = await requireTaskAssignee(user, requiredText(formData, "assignedToId", "Assignee", 80));
     const dueAt = optionalDate(formData, "dueAt", "Due date");
     const db = getDb();
     await db.$transaction(async (tx) => {
       const duty = await tx.dutyRecord.create({
-        data: { firmId: user.firmId, matterId: matter?.id ?? null, title, method, dueAt, assignedToId, createdById: user.id },
+        data: { firmId: user.firmId, matterId: matter.id, title, method, dueAt, assignedToId, createdById: user.id, status: "Assigned" },
       });
-      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "duty.created", entityType: "duty", entityId: duty.id, details: { method, matterId: matter?.id ?? null } } });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "court_run.created", entityType: "court-run", entityId: duty.id, details: { method, matterId: matter.id } } });
     });
     revalidate();
     return "success:Duty created.";
+  } catch (error) { return actionErrorMessage(error); }
+}
+
+export async function updateMyDuty(_state: string | null, formData: FormData): Promise<string | null> {
+  try {
+    const user = await authorizedEUser();
+    const dutyId = requiredText(formData, "dutyId", "Court run", 80);
+    const updateNotes = optionalText(formData, "updateNotes", "Update", 1000);
+    const complete = formData.get("complete") === "on";
+    const db = getDb();
+    const duty = await db.dutyRecord.findFirst({
+      where: { id: dutyId, firmId: user.firmId, assignedToId: user.id },
+      select: { id: true, status: true, matterId: true },
+    });
+    if (!duty) throw new ActionError("This court run is not assigned to you.");
+    if (duty.status === "Completed" || duty.status === "Returned") throw new ActionError("This court run is already completed.");
+    await db.$transaction(async (tx) => {
+      await tx.dutyRecord.updateMany({
+        where: { id: duty.id, firmId: user.firmId, assignedToId: user.id, status: { not: "Completed" } },
+        data: { ...(complete ? { status: "Completed" } : {}), returnNotes: updateNotes },
+      });
+      if (duty.matterId) {
+        await tx.matterActivity.create({ data: { firmId: user.firmId, matterId: duty.matterId, actorId: user.id, action: complete ? "Court run completed" : "Court run updated", details: { dutyId, updateNotes } } });
+        await tx.matter.update({ where: { id_firmId: { id: duty.matterId, firmId: user.firmId } }, data: { lastActivityAt: new Date() } });
+      }
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: complete ? "court_run.completed" : "court_run.updated", entityType: "court-run", entityId: duty.id, details: { updateNotes } } });
+    });
+    revalidate();
+    return complete ? "success:Court run marked completed." : "success:Court run update saved.";
   } catch (error) { return actionErrorMessage(error); }
 }
 
@@ -237,18 +265,19 @@ export async function returnDuty(_state: string | null, formData: FormData): Pro
     const internalDueAt = optionalDate(formData, "internalDueAt", "Internal update due date");
     const externalDueAt = optionalDate(formData, "externalDueAt", "External update due date");
     const db = getDb();
-    const duty = await db.dutyRecord.findFirst({ where: { id: dutyId, firmId: user.firmId }, select: { id: true, matterId: true, title: true, method: true, assignedToId: true, status: true } });
+    const duty = await db.dutyRecord.findFirst({ where: { id: dutyId, firmId: user.firmId }, select: { id: true, matterId: true, title: true, method: true, assignedToId: true, status: true, returnedAt: true, returnNotes: true } });
     if (!duty) throw new ActionError("Duty not found in this firm.");
+    if (duty.returnedAt) throw new ActionError("Documents for this court run have already been returned.");
     if (duty.matterId) await requireMatter(user, duty.matterId);
     else if (!canAccessTask({ userId: user.id, owner: user.isOwner, scope: permissionScope(user, "tasks"), assignedUserId: duty.assignedToId, directReportIds: await reportIds(user.id, user.firmId) })) {
       throw new ActionError("This duty is outside your permitted assignment scope.");
     }
     await db.$transaction(async (tx) => {
       const changed = await tx.dutyRecord.updateMany({
-        where: { id: duty.id, firmId: user.firmId, status: "Scheduled" },
-        data: { status: "Returned", returnedAt: new Date(), returnNotes },
+        where: { id: duty.id, firmId: user.firmId, returnedAt: null },
+        data: { returnedAt: new Date(), ...(returnNotes ? { returnNotes: duty.returnNotes ? `${duty.returnNotes}\nDocument return: ${returnNotes}` : returnNotes } : {}) },
       });
-      if (changed.count !== 1) throw new ActionError("This duty was already returned. Reload the page.");
+      if (changed.count !== 1) throw new ActionError("Documents for this court run were already returned. Reload the page.");
       const published = await activeSetup(tx, user.firmId);
       const categories = taskCategoriesFromConfig(published);
       if (!categories.includes("Updates internal") || !categories.includes("Updates external")) {
@@ -309,45 +338,60 @@ export async function updatePhysicalFile(_state: string | null, formData: FormDa
   try {
     const user = await authorizedEUser("Edit");
     const fileId = requiredText(formData, "fileId", "Physical file", 80);
-    const statusValue = requiredText(formData, "status", "File status", 30);
-    const status = statusValue as "InStorage" | "OutOfStorage" | "Closed";
-    if (!["InStorage", "OutOfStorage", "Closed"].includes(status)) throw new ActionError("Choose a valid file status.");
-    const borrowerId = status === "OutOfStorage" ? requiredText(formData, "borrowerId", "Borrower", 80) : null;
+    const fileStatus = requiredText(formData, "fileStatus", "File status", 20);
+    if (fileStatus !== "Open" && fileStatus !== "Closed") throw new ActionError("Choose Open or Closed.");
+    const storageStatus = requiredText(formData, "storageStatus", "Storage status", 20);
+    if (storageStatus !== "InOffice" && storageStatus !== "Storage") throw new ActionError("Choose In office or Storage.");
+    const cupboard = optionalText(formData, "cupboard", "Cupboard", 80);
+    const shelfRow = optionalText(formData, "shelfRow", "Row", 40);
+    const shelfColumn = optionalText(formData, "shelfColumn", "Column", 40);
+    const selectedOutLocation = optionalText(formData, "outOfFilingLocation", "Out-of-filing location", 100);
+    let borrowerId: string | null = null;
+    let outOfFilingLocation = selectedOutLocation;
+    if (selectedOutLocation?.startsWith("employee:")) {
+      borrowerId = selectedOutLocation.slice("employee:".length);
+      outOfFilingLocation = "Employee";
+    } else if (selectedOutLocation && !["Court shelf", "Court", "Out of office"].includes(selectedOutLocation)) {
+      throw new ActionError("Choose an employee, Court shelf, Court, or Out of office.");
+    }
     const boxNumber = optionalText(formData, "boxNumber", "Box number", 120);
     const dateSent = optionalDate(formData, "dateSent", "Date sent");
     const storageCompany = optionalText(formData, "storageCompany", "Storage company", 240);
     const barcodeReference = optionalText(formData, "barcodeReference", "Barcode or reference", 160);
-    if (status === "Closed" && (!boxNumber || !dateSent || !storageCompany || !barcodeReference)) {
-      throw new ActionError("Closed files require a box number, date sent, storage company, and barcode or reference.");
+    if (fileStatus === "Closed" && storageStatus === "Storage" && (!boxNumber || !barcodeReference)) {
+      throw new ActionError("Files sent to storage require a box number and warehouse barcode reference.");
     }
     const db = getDb();
-    const file = await db.physicalFile.findFirst({ where: { id: fileId, firmId: user.firmId }, select: { id: true, matterId: true, status: true } });
+    const file = await db.physicalFile.findFirst({ where: { id: fileId, firmId: user.firmId }, select: { id: true, matterId: true, status: true, fileStatus: true } });
     if (!file) throw new ActionError("Physical file not found in this firm.");
     const matter = await requireMatter(user, file.matterId);
     if (borrowerId) {
-      const reports = permissionScope(user, "matters") === "Team" ? await reportIds(user.id, user.firmId) : [];
       const borrower = await db.user.findFirst({ where: { id: borrowerId, firmId: user.firmId, active: true }, select: { id: true } });
-      if (!borrower || !canReadMatter(user, borrower.id, reports)) throw new ActionError("Choose an active borrower within your permitted matter scope.");
+      if (!borrower) throw new ActionError("Choose an active employee in this firm.");
     }
     await db.$transaction(async (tx) => {
       const update = await tx.physicalFile.updateMany({
-        where: {
-          id: file.id, firmId: user.firmId, status: file.status,
-        },
+        where: { id: file.id, firmId: user.firmId, fileStatus: file.fileStatus },
         data: {
-          status,
+          fileStatus,
+          storageStatus: fileStatus === "Open" ? "InOffice" : storageStatus,
+          cupboard,
+          shelfRow,
+          shelfColumn,
+          outOfFilingLocation: fileStatus === "Open" ? outOfFilingLocation : null,
+          status: fileStatus === "Closed" ? "Closed" : outOfFilingLocation ? "OutOfStorage" : "InStorage",
           borrowerId,
-          checkedOutAt: status === "OutOfStorage" ? new Date() : null,
-          boxNumber,
-          dateSent,
-          storageCompany,
-          barcodeReference,
+          checkedOutAt: fileStatus === "Open" && outOfFilingLocation ? new Date() : null,
+          boxNumber: fileStatus === "Closed" ? boxNumber : null,
+          dateSent: fileStatus === "Closed" ? dateSent : null,
+          storageCompany: fileStatus === "Closed" ? storageCompany : null,
+          barcodeReference: fileStatus === "Closed" ? barcodeReference : null,
         },
       });
-      if (update.count !== 1) throw new ActionError("The physical file status changed or it is already checked out. Reload before trying again.");
-      await tx.matterActivity.create({ data: { firmId: user.firmId, matterId: matter.id, actorId: user.id, action: status === "OutOfStorage" ? "Physical file checked out" : status === "InStorage" ? "Physical file checked in" : "Physical file sent to closed storage", details: { status, borrowerId, boxNumber, dateSent: dateSent?.toISOString() ?? null, storageCompany, barcodeReference } } });
+      if (update.count !== 1) throw new ActionError("The physical file changed. Reload before trying again.");
+      await tx.matterActivity.create({ data: { firmId: user.firmId, matterId: matter.id, actorId: user.id, action: fileStatus === "Closed" ? "Physical file closed" : "Physical file updated", details: { fileStatus, storageStatus, cupboard, shelfRow, shelfColumn, outOfFilingLocation, borrowerId, boxNumber, barcodeReference } } });
       await tx.matter.update({ where: { id_firmId: { id: matter.id, firmId: user.firmId } }, data: { lastActivityAt: new Date() } });
-      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: `physical_file.${status.toLowerCase()}`, entityType: "physical_file", entityId: file.id } });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: `physical_file.${fileStatus.toLowerCase()}`, entityType: "physical_file", entityId: file.id } });
     });
     revalidate();
     return "success:Physical file status updated.";

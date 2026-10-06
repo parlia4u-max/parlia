@@ -27,6 +27,7 @@ export type SetupSectionKey = (typeof SETUP_SECTIONS)[number]["key"];
 export type SetupConfig = Record<SetupSectionKey, unknown>;
 export const TASK_CATEGORIES = ["Drafting", "Court runs", "Tasks", "Follow up", "Updates internal", "Updates external"] as const;
 export const STAGE_KINDS = ["A", "W", "C", "X"] as const;
+export const MINUTES_TEMPLATE_LAYOUTS = ["modern", "formal", "editorial"] as const;
 
 const southAfricanHolidays2026 = [
   { date: "2026-01-01", name: "New Year's Day" },
@@ -96,9 +97,9 @@ export function createInitialSetupConfig(firmName: string): SetupConfig {
       ],
     },
     minutesTemplates: [
-      { name: "Template A", sections: ["Attendees", "Purpose", "Discussion", "Decisions", "Actions"] },
-      { name: "Template B", sections: ["Attendees", "Agenda", "Discussion", "Actions"] },
-      { name: "Template C", sections: ["Attendees", "Updates", "Discussion", "Next steps"] },
+      { name: "Template A", layout: "modern", sections: ["Purpose", "Discussion", "Decisions"] },
+      { name: "Template B", layout: "formal", sections: ["Agenda", "Discussion", "Decisions"] },
+      { name: "Template C", layout: "editorial", sections: ["Updates", "Discussion", "Next steps"] },
     ],
     hrChecklist: [
       { name: "Identity and contact details", required: true },
@@ -244,7 +245,16 @@ export function validateSetupValue(section: SetupSectionKey, value: unknown): un
       if (new Set(names).size !== names.length) throw new ActionError("Task type names must be unique.");
       break;
     }
-    case "minutesTemplates": namedList(value, "Minutes templates", "sections"); break;
+    case "minutesTemplates": {
+      namedList(value, "Minutes templates", "sections");
+      for (const [index, item] of array(value, "Minutes templates").entries()) {
+        const template = object(item, `Minutes template ${index + 1}`);
+        if (template.layout !== undefined && !MINUTES_TEMPLATE_LAYOUTS.includes(String(template.layout) as typeof MINUTES_TEMPLATE_LAYOUTS[number])) {
+          throw new ActionError("Choose a supported minutes template layout.");
+        }
+      }
+      break;
+    }
     case "urgencyBands": {
       for (const item of array(value, "Urgency bands")) {
         const row = object(item, "Urgency band"); text(row.name, "Urgency band name", 120); positiveNumber(row.days, "Urgency days", 3650);

@@ -18,20 +18,23 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const currentUser = await getCurrentUser();
-  let navigationAccess: NavigationAccess = { isOwner: false, canViewPeople: false, canManagePeople: false, canViewMatters: false, canViewTasks: false, canViewCalendar: false, canViewAttendance: false, canViewReports: false, canEditMatters: false, canEditAccounts: false, setupHrefs: [] };
+  let navigationAccess: NavigationAccess = { isOwner: false, canViewPeople: false, canManagePeople: false, canViewMatters: false, canViewTasks: false, canViewCalendar: false, canViewAttendance: false, canViewReports: false, canEditMatters: false, canEditAccounts: false, canManageRecognition: false, setupHrefs: [] };
   if (currentUser) {
     const setupHrefs: string[] = [];
+    let canManageRecognition = currentUser.isOwner;
     if (currentUser.isOwner) {
       setupHrefs.push(...SETUP_SECTIONS.map((section) => section.href));
     } else {
       const db = getDb();
-      const [configuration, supervisorLink] = await Promise.all([
+      const [configuration, supervisorLink, recognitionSettings] = await Promise.all([
         db.setupConfiguration.findUnique({ where: { firmId: currentUser.firmId }, select: { published: true } }),
         db.supervisorLink.findFirst({
           where: { firmId: currentUser.firmId, supervisorId: currentUser.id, user: { active: true } },
           select: { id: true },
         }),
+        db.teamRecognitionSettings.findUnique({ where: { firmId: currentUser.firmId }, select: { delegateId: true } }),
       ]);
+      canManageRecognition = recognitionSettings?.delegateId === currentUser.id;
       if (configuration && supervisorLink) {
         const published = configuration.published && typeof configuration.published === "object"
           ? configuration.published as { setupRights?: { supervisors?: { userId: string; sections: string[] }[] } }
@@ -54,6 +57,7 @@ export default async function RootLayout({
       canViewReports: hasPermission(currentUser, "reports") && hasPermission(currentUser, "matters"),
       canEditMatters: hasPermission(currentUser, "matters", "Edit"),
       canEditAccounts: hasPermission(currentUser, "accounts", "Edit"),
+      canManageRecognition,
       setupHrefs,
     };
   }

@@ -30,10 +30,16 @@ export type NavigationAccess = {
   canViewReports: boolean;
   canEditMatters: boolean;
   canEditAccounts: boolean;
+  canManageRecognition: boolean;
   setupHrefs: string[];
 };
 
 const menuGroups: MenuGroup[] = [
+  {
+    label: "CALENDAR",
+    collapsible: false,
+    items: [{ label: "Calendar", href: "/calendar", icon: "calendar" }],
+  },
   {
     label: "MY DAY",
     items: [
@@ -46,11 +52,9 @@ const menuGroups: MenuGroup[] = [
     items: [
       { label: "Matters", href: "/matters", icon: "matter" },
       { label: "Stages board", href: "/matters/board", icon: "filing" },
-      { label: "Calendar", href: "/calendar", icon: "calendar" },
       { label: "Service & tracing", href: "/service-tracing", icon: "service" },
-      { label: "Duties", href: "/duties", icon: "filing" },
+      { label: "Court runs", href: "/duties", icon: "filing" },
       { label: "Physical files", href: "/physical-files", icon: "filing" },
-      { label: "Reports", href: "/reports", icon: "reports" },
       { label: "Client submissions", href: "/client-review", icon: "messages" },
       { label: "Payment reviews", href: "/accounts-review", icon: "reports" },
     ],
@@ -80,6 +84,7 @@ const menuGroups: MenuGroup[] = [
     label: "SETTINGS",
     items: [
       { label: "Setup Centre", href: "/setup", icon: "setup", desktopOnly: true },
+      { label: "Employee recognition settings", href: "/settings/employee-recognition", icon: "people" },
       { label: "Firm profile and branding", href: "/settings/firm-profile", icon: "setup" },
       { label: "Country & holidays", href: "/settings/country-holidays", icon: "calendar" },
       { label: "Matter types & stages", href: "/settings/matter-types-stages", icon: "matter" },
@@ -94,6 +99,7 @@ const menuGroups: MenuGroup[] = [
       { label: "Integrations", href: "/settings/integrations", icon: "setup" },
       { label: "Permissions and role templates", href: "/settings/permissions", icon: "people" },
       { label: "Supervisor setup rights", href: "/settings/supervisor-setup-rights", icon: "people" },
+      { label: "Inactive matters report", href: "/reports", icon: "reports" },
       { label: "Audit log", href: "/settings/audit-log", icon: "reports" },
       { label: "Subscription & team size", href: "/settings/subscription", icon: "setup" },
     ],
@@ -183,14 +189,16 @@ export function AppShell({ children, navigationAccess }: { children: React.React
         if (item.href === "/leave" || item.href === "/people/hr") return navigationAccess.canViewPeople;
         if (item.href === "/people/equipment") return navigationAccess.canManagePeople;
         if (item.href === "/people/password-vault") return navigationAccess.isOwner;
+        if (item.href === "/team/suggestions" || item.href === "/team/recognition") return true;
         if (item.href.startsWith("/team/")) return navigationAccess.canViewPeople;
         if (item.href === "/matters" || item.href === "/matters/board") return navigationAccess.canViewMatters;
         if (item.href === "/tasks") return navigationAccess.canViewTasks;
         if (item.href === "/calendar") return navigationAccess.canViewCalendar;
         if (item.href === "/attendance") return navigationAccess.canViewAttendance;
-        if (item.href === "/reports") return navigationAccess.canViewReports;
+        if (item.href === "/reports") return navigationAccess.isOwner;
         if (item.href === "/client-review") return navigationAccess.canEditMatters;
         if (item.href === "/accounts-review") return navigationAccess.canEditAccounts;
+        if (item.href === "/settings/employee-recognition") return navigationAccess.canManageRecognition;
         if (item.href === "/service-tracing" || item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||

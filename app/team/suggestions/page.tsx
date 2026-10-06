@@ -1,18 +1,18 @@
 import { submitTeamSuggestion, updateTeamSuggestionStatus } from "@/app/actions/team";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { FoundationHeader } from "@/components/foundation";
-import { hasPermission, requirePermission } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { TeamSuggestionForm } from "@/components/team-suggestion-form";
 
 type Search = { q?: string; status?: string };
 
 export default async function TeamSuggestionsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requirePermission("people");
+  const user = await requireUser();
   const db = getDb();
   const query = await searchParams;
   const q = query.q?.trim().slice(0, 100) ?? "";
   const status = ["Open", "Under review", "Implemented", "Declined"].includes(query.status ?? "") ? query.status : undefined;
-  const canSubmit = hasPermission(user, "people", "Edit");
   const suggestions = user.isOwner ? await db.teamSuggestion.findMany({
     where: {
       firmId: user.firmId,
@@ -28,17 +28,10 @@ export default async function TeamSuggestionsPage({ searchParams }: { searchPara
     <section className="foundation-page">
       <FoundationHeader title="Team suggestions" firm={user.firm.name} isOwner={user.isOwner} />
       <p className="foundation-intro">Share practical ideas for improving how the firm works. Anonymous suggestions do not store a submitter identity, and their audit record has no actor identity or suggestion text.</p>
-      {canSubmit ? (
-        <section className="foundation-panel">
-          <h2>Share a suggestion</h2>
-          <ActionForm action={submitTeamSuggestion} className="foundation-form">
-            <label className="foundation-field"><span>Category</span><select name="category" required defaultValue="Process"><option>Process</option><option>Tools</option><option>Wellbeing</option><option>Other</option></select></label>
-            <label className="foundation-field"><span>Your suggestion</span><textarea name="body" required maxLength={4000} rows={5} /></label>
-            <label className="team-checkbox"><input type="checkbox" name="anonymous" /> Submit anonymously</label>
-            <SubmitButton>Submit suggestion</SubmitButton>
-          </ActionForm>
-        </section>
-      ) : <p className="foundation-muted">Your people permission allows viewing but not submitting suggestions.</p>}
+      <section className="foundation-panel">
+        <h2>Share a suggestion</h2>
+        <TeamSuggestionForm action={submitTeamSuggestion} />
+      </section>
       {user.isOwner ? (
         <section className="team-suggestions">
           <h2>Owner inbox</h2>
@@ -51,7 +44,13 @@ export default async function TeamSuggestionsPage({ searchParams }: { searchPara
           {suggestions.map((suggestion) => (
             <article className="foundation-panel" key={suggestion.id}>
               <div className="team-message-meta"><strong>{suggestion.category}</strong><time>{suggestion.createdAt.toLocaleString()}</time></div>
-              <p>{suggestion.body}</p>
+              {(() => {
+                try {
+                  const parsed = JSON.parse(suggestion.body) as { heading?: string; sections?: { heading?: string; body?: string }[] };
+                  if (parsed && Array.isArray(parsed.sections)) return <><h3>{parsed.heading || suggestion.category}</h3>{parsed.sections.map((section, index) => <section className="team-suggestion-entry" key={`${suggestion.id}-${index}`}><strong>{section.heading}</strong><p>{section.body}</p></section>)}</>;
+                } catch { }
+                return <p>{suggestion.body}</p>;
+              })()}
               <p className="foundation-muted">{suggestion.anonymous ? "Anonymous" : `Submitted by ${suggestion.submitter?.name ?? "Former staff member"}`}</p>
               <ActionForm action={updateTeamSuggestionStatus} className="foundation-inline-form">
                 <input type="hidden" name="suggestionId" value={suggestion.id} />

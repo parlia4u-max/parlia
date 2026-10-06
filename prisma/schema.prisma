@@ -144,6 +144,8 @@ model Firm {
   meetingActionItems TeamMeetingActionItem[]
   suggestions TeamSuggestion[]
   employeeVotes TeamEmployeeVote[]
+  recognitionSettings TeamRecognitionSettings?
+  recognitionPublications TeamRecognitionPublication[]
   leaveProofTasks LeaveProofTask[]
   leaveRequests LeaveRequest[]
   leaveHandovers LeaveTaskHandover[]
@@ -831,6 +833,12 @@ model PhysicalFile {
   location         String
   folder           String
   status           PhysicalFileStatus @default(InStorage)
+  fileStatus       String             @default("Open")
+  storageStatus    String             @default("InOffice")
+  cupboard         String?
+  shelfRow         String?
+  shelfColumn      String?
+  outOfFilingLocation String?
   borrowerId       String?
   borrower         User?              @relation("PhysicalFileBorrower", fields: [borrowerId, firmId], references: [id, firmId], onDelete: Restrict)
   checkedOutAt     DateTime?
@@ -1057,12 +1065,43 @@ model TeamEmployeeVote {
   period    String
   voterId   String
   voter     User     @relation("EmployeeVoteVoter", fields: [voterId, firmId], references: [id, firmId], onDelete: Cascade)
-  nomineeId String
-  nominee   User     @relation("EmployeeVoteNominee", fields: [nomineeId, firmId], references: [id, firmId], onDelete: Cascade)
+  nomineeId String?
+  nominee   User?    @relation("EmployeeVoteNominee", fields: [nomineeId, firmId], references: [id, firmId], onDelete: Cascade)
+  nomineeName String @default("")
+  reason    String   @default("")
+  anonymous Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([firmId, period, voterId])
   @@index([firmId, period, nomineeId])
+}
+
+model TeamRecognitionSettings {
+  firmId             String   @id
+  firm               Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  dueDay              Int      @default(25)
+  dueTime             String   @default("17:00")
+  delegateId          String?
+  externalNominees    Json     @default("[]")
+  certificateLayout   String   @default("modern")
+  updatedAt           DateTime @updatedAt
+}
+
+model TeamRecognitionPublication {
+  id             String   @id @default(cuid())
+  firmId         String
+  firm           Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  period         String
+  winnerName     String
+  voteCount      Int
+  certificateLayout String
+  publishedById  String
+  publishedAt    DateTime @default(now())
+
+  @@unique([firmId, period])
+  @@unique([id, firmId])
+  @@index([firmId, publishedAt])
 }
 
 model LeaveRequest {

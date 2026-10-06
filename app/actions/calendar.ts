@@ -155,6 +155,54 @@ export async function createCalendarEvent(_state: string | null, formData: FormD
   redirect("/calendar");
 }
 
+export async function updateCalendarEvent(_state: string | null, formData: FormData): Promise<string | null> {
+  try {
+    const user = await calendarUser(true);
+    const eventId = requiredText(formData.get("eventId"), "Event", 80);
+    const db = getDb();
+    const allowedOwners = await permittedCalendarOwners(user);
+    const event = await db.calendarEvent.findFirst({
+      where: { id: eventId, firmId: user.firmId, ownerId: { in: allowedOwners } },
+      select: { id: true, ownerId: true, createdById: true, matterId: true },
+    });
+    if (!event) throw new ActionError("This event is not in a calendar you are allowed to manage.");
+    const title = requiredText(formData.get("title"), "Event name", 160);
+    const startAt = dateTime(formData.get("startAt"), "Start time");
+    const endAt = dateTime(formData.get("endAt"), "End time");
+    if (endAt <= startAt) throw new ActionError("End time must be after start time.");
+    if (endAt.getTime() - startAt.getTime() > 7 * 24 * 60 * 60 * 1000) throw new ActionError("Calendar events cannot be longer than 7 days.");
+    const responsibleId = requiredText(formData.get("responsibleId"), "Responsible person", 80);
+    if (!allowedOwners.includes(responsibleId)) throw new ActionError("Choose a person whose calendar you are allowed to manage.");
+    const audience = String(formData.get("audience") ?? "Internal");
+    if (audience !== "Internal" && audience !== "Client") throw new ActionError("Choose Internal or Client.");
+    const description = optionalText(formData.get("description"), "Notes", 4000);
+    const attendeeIds = formData.getAll("attendeeIds").filter((value): value is string => typeof value === "string");
+    if (attendeeIds.length > 50 || attendeeIds.some((id) => !allowedOwners.includes(id))) {
+      throw new ActionError("Choose attendees whose calendars you are allowed to see.");
+    }
+    await db.$transaction(async (tx) => {
+      await tx.calendarEvent.updateMany({
+        where: { id: event.id, firmId: user.firmId },
+        data: { title, startAt, endAt, ownerId: responsibleId, responsibleId, audience, description },
+      });
+      await tx.calendarEventAttendee.deleteMany({ where: { firmId: user.firmId, eventId: event.id } });
+      if (attendeeIds.length) await tx.calendarEventAttendee.createMany({
+        data: [...new Set(attendeeIds)].map((userId) => ({ firmId: user.firmId, eventId: event.id, userId })),
+      });
+      await tx.auditLog.create({
+        data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.updated", entityType: "calendar-event", entityId: event.id, details: { previousOwnerId: event.ownerId, audience } },
+      });
+    });
+    if (audience === "Client" && event.matterId) {
+      await notifyMatterClients({ firmId: user.firmId, matterId: event.matterId, kind: "Meeting" }).catch(() => undefined);
+    }
+    revalidatePath("/calendar");
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+  redirect("/calendar");
+}
+
 export async function addCalendarChecklistItem(_state: string | null, formData: FormData): Promise<string | null> {
   try {
     const user = await calendarUser(true);

@@ -1,100 +1,93 @@
 import Link from "next/link";
-import { createPhysicalFile, updatePhysicalFile } from "@/app/actions/module-e";
+import { updatePhysicalFile } from "@/app/actions/module-e";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { FoundationHeader } from "@/components/foundation";
 import { requirePermission, hasPermission, permissionScope } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 
-type Search = { q?: string; status?: string };
+type Search = { q?: string; tab?: string };
+const FILE_TABS = ["open", "closed", "warehouse"] as const;
 
 export default async function PhysicalFilesPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("matters");
   const query = await searchParams;
   const q = query.q?.trim().slice(0, 120) ?? "";
-  const status = (["All", "InStorage", "OutOfStorage", "Closed"].includes(query.status ?? "") ? query.status ?? "All" : "All") as "All" | "InStorage" | "OutOfStorage" | "Closed";
+  const tab = FILE_TABS.includes(query.tab as (typeof FILE_TABS)[number]) ? query.tab as (typeof FILE_TABS)[number] : "open";
   const scope = permissionScope(user, "matters");
   const reports = scope === "Team" ? await getDb().supervisorLink.findMany({
     where: { firmId: user.firmId, supervisorId: user.id, user: { firmId: user.firmId, active: true } }, select: { userId: true },
   }) : [];
   const responsibleIds = scope === "Firm" ? undefined : [user.id, ...reports.map((row) => row.userId)];
-  const [matters, configuration] = await Promise.all([
-    getDb().matter.findMany({
-      where: { firmId: user.firmId, ...(responsibleIds ? { responsibleId: { in: responsibleIds } } : {}) },
-      select: { id: true, matterNumber: true, clientName: true, clientSurname: true },
-      orderBy: { matterNumber: "asc" }, take: 5000,
-    }),
-    getDb().setupConfiguration.findFirst({ where: { firmId: user.firmId }, select: { published: true } }),
-  ]);
-  const matterIds = matters.map((matter) => matter.id);
-  const [existing, files, borrowers] = await Promise.all([
-    getDb().physicalFile.findMany({ where: { firmId: user.firmId, matterId: { in: matterIds } }, select: { matterId: true } }),
-    matterIds.length ? getDb().physicalFile.findMany({
+  const [files, employees] = await Promise.all([
+    getDb().physicalFile.findMany({
       where: {
-        firmId: user.firmId, matterId: { in: matterIds },
-        ...(status !== "All" ? { status } : {}),
+        firmId: user.firmId,
+        ...(tab === "open" ? { fileStatus: "Open" } : { fileStatus: "Closed" }),
+        ...(tab === "warehouse" ? { storageStatus: "Storage" } : {}),
+        ...(responsibleIds ? { matter: { is: { responsibleId: { in: responsibleIds } } } } : {}),
         ...(q ? { OR: [
-          { location: { contains: q, mode: "insensitive" } }, { folder: { contains: q, mode: "insensitive" } },
-          { boxNumber: { contains: q, mode: "insensitive" } }, { storageCompany: { contains: q, mode: "insensitive" } },
+          { matter: { is: { matterNumber: { contains: q, mode: "insensitive" } } } },
+          { matter: { is: { clientName: { contains: q, mode: "insensitive" } } } },
+          { matter: { is: { clientSurname: { contains: q, mode: "insensitive" } } } },
+          { cupboard: { contains: q, mode: "insensitive" } }, { shelfRow: { contains: q, mode: "insensitive" } },
+          { shelfColumn: { contains: q, mode: "insensitive" } }, { boxNumber: { contains: q, mode: "insensitive" } },
           { barcodeReference: { contains: q, mode: "insensitive" } },
-          { matter: { matterNumber: { contains: q, mode: "insensitive" } } },
         ] } : {}),
       },
       select: {
-        id: true, location: true, folder: true, status: true, checkedOutAt: true, boxNumber: true, dateSent: true, storageCompany: true, barcodeReference: true,
-        borrower: { select: { name: true } }, matter: { select: { id: true, matterNumber: true, clientName: true, clientSurname: true } },
+        id: true, fileStatus: true, storageStatus: true, cupboard: true, shelfRow: true, shelfColumn: true,
+        outOfFilingLocation: true, borrowerId: true, boxNumber: true, barcodeReference: true, dateSent: true,
+        storageCompany: true,
+        borrower: { select: { name: true } },
+        matter: { select: { id: true, matterNumber: true, clientName: true, clientSurname: true } },
       },
-      orderBy: [{ status: "asc" }, { updatedAt: "desc" }], take: 500,
-    }) : [],
-    getDb().user.findMany({
-      where: { firmId: user.firmId, active: true, ...(responsibleIds ? { id: { in: responsibleIds } } : {}) },
-      select: { id: true, name: true }, orderBy: { name: "asc" }, take: 500,
+      orderBy: { matter: { matterNumber: "asc" } }, take: 500,
     }),
+    getDb().user.findMany({ where: { firmId: user.firmId, active: true, isOwner: false }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 1000 }),
   ]);
-  const published = configuration?.published && typeof configuration.published === "object" ? configuration.published as Record<string, unknown> : {};
-  const structure = published.filingStructure && typeof published.filingStructure === "object" ? published.filingStructure as { locations?: { name?: string }[]; folders?: string[] } : {};
-  const locations = (structure.locations ?? []).filter((location): location is { name: string } => typeof location.name === "string");
-  const folders = (structure.folders ?? []).filter((folder): folder is string => typeof folder === "string");
-  const existingIds = new Set(existing.map((file) => file.matterId));
   const canEdit = hasPermission(user, "matters", "Edit");
+  const tabHref = (name: (typeof FILE_TABS)[number]) => `/physical-files?tab=${name}`;
+  const tabLabel = tab === "open" ? "Open Files" : tab === "closed" ? "Closed Files" : "In Warehouse";
 
   return (
-    <section className="foundation-page">
-      <FoundationHeader title="Physical files" firm={user.firm.name} isOwner={user.isOwner} />
-      <p className="foundation-intro">Track physical locations and check-outs without uploading or storing client documents. Closed files include external storage references.</p>
-      {canEdit ? <section className="foundation-panel">
-        <h2>Register a physical file</h2>
-        {!locations.length || !folders.length ? <p className="foundation-error">Publish at least one filing location and folder in Setup Centre before registering files.</p> : <ActionForm action={createPhysicalFile} className="foundation-form">
-          <label className="foundation-field"><span>Matter</span><select name="matterId" required defaultValue=""><option value="" disabled>Select a matter</option>{matters.filter((matter) => !existingIds.has(matter.id)).map((matter) => <option key={matter.id} value={matter.id}>{matter.matterNumber} · {matter.clientName} {matter.clientSurname}</option>)}</select></label>
-          <label className="foundation-field"><span>Filing location</span><select name="location" required defaultValue=""><option value="" disabled>Select location</option>{locations.map((location) => <option key={location.name}>{location.name}</option>)}</select></label>
-          <label className="foundation-field"><span>Folder</span><select name="folder" required defaultValue=""><option value="" disabled>Select folder</option>{folders.map((folder) => <option key={folder}>{folder}</option>)}</select></label>
-          <SubmitButton>Register physical file</SubmitButton>
-        </ActionForm>}
-      </section> : null}
+    <section className="foundation-page physical-files-page">
+      <FoundationHeader title="Physical Files" firm={user.firm.name} isOwner={user.isOwner} />
+      <p className="foundation-intro">Every matter has a physical-file record. Set its shelf location, track files outside filing, and manage closed storage references.</p>
+      <nav className="physical-file-tabs" aria-label="Physical file registers">
+        {FILE_TABS.map((name) => <Link key={name} aria-current={tab === name ? "page" : undefined} href={tabHref(name)}>{name === "open" ? "Open Files" : name === "closed" ? "Closed Files" : "In Warehouse"}</Link>)}
+      </nav>
       <form action="/physical-files" className="foundation-inline-form matter-search">
-        <label className="foundation-field"><span>Search physical files</span><input name="q" maxLength={120} defaultValue={q} placeholder="Matter, location, folder, box or barcode" /></label>
-        <label className="foundation-field"><span>Status</span><select name="status" defaultValue={status}><option>All</option><option value="InStorage">In storage</option><option value="OutOfStorage">Out of storage</option><option value="Closed">Closed / external storage</option></select></label>
+        <input type="hidden" name="tab" value={tab} />
+        <label className="foundation-field"><span>Search {tabLabel.toLowerCase()}</span><input name="q" maxLength={120} defaultValue={q} placeholder="Reference, client, location or storage number" /></label>
         <button className="button-primary" type="submit">Search</button>
+        <a className="button-secondary physical-file-download" href={`/api/physical-files?tab=${tab}`}>Download CSV</a>
       </form>
-      <div className="todo-list">
-        {files.map((file) => <article className="todo-card" key={file.id}>
-          <div className="todo-card-heading"><div><p className="eyebrow">{file.location} · {file.folder}</p><h2><Link href={`/matters/${file.matter.id}`}>{file.matter.matterNumber} · {file.matter.clientName} {file.matter.clientSurname}</Link></h2></div><span>{file.status === "InStorage" ? "In storage" : file.status === "OutOfStorage" ? "Out of storage" : "Closed / external storage"}</span></div>
-          {file.status === "OutOfStorage" ? <p className="foundation-muted">Borrowed by {file.borrower?.name ?? "Unassigned"} · checked out {file.checkedOutAt?.toLocaleDateString()}</p> : null}
-          {file.boxNumber || file.dateSent || file.storageCompany || file.barcodeReference ? <p className="foundation-muted">External storage record · Box {file.boxNumber ?? "not recorded"} · Sent {file.dateSent?.toLocaleDateString() ?? "date not recorded"} · {file.storageCompany ?? "storage company not recorded"} · Reference {file.barcodeReference ?? "not recorded"}</p> : null}
-          {canEdit ? <details><summary>Update storage status</summary><ActionForm action={updatePhysicalFile} className="foundation-form">
-            <input type="hidden" name="fileId" value={file.id} />
-            <p className="foundation-muted">Closed files require all four external-storage reference fields below. Existing external-storage details are retained when checking the file out or in.</p>
-            <label className="foundation-field"><span>Status</span><select name="status" defaultValue={file.status}><option value="InStorage">In storage / checked in</option><option value="OutOfStorage">Out of storage / check out</option><option value="Closed">Closed / external storage</option></select></label>
-            <label className="foundation-field"><span>Borrower (when checked out)</span><select name="borrowerId" defaultValue={user.id}><option value="">Select borrower</option>{borrowers.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
-            <label className="foundation-field"><span>Box number (closed files)</span><input name="boxNumber" maxLength={120} defaultValue={file.boxNumber ?? ""} /></label>
-            <label className="foundation-field"><span>Date sent (closed files)</span><input name="dateSent" type="date" defaultValue={file.dateSent?.toISOString().slice(0, 10) ?? ""} /></label>
-            <label className="foundation-field"><span>Storage company (closed files)</span><input name="storageCompany" maxLength={240} defaultValue={file.storageCompany ?? ""} /></label>
-            <label className="foundation-field"><span>Barcode / reference (closed files)</span><input name="barcodeReference" maxLength={160} defaultValue={file.barcodeReference ?? ""} /></label>
-            <SubmitButton>Save storage status</SubmitButton>
-          </ActionForm></details> : null}
-        </article>)}
-        {!files.length ? <section className="foundation-panel"><p>No physical files match this search.</p></section> : null}
-        {files.length === 500 ? <p className="foundation-muted">Showing the first 500 records. Narrow your search to find older entries.</p> : null}
-      </div>
+      <div className="physical-file-table-scroll"><table className="foundation-table physical-file-table">
+        <thead>{tab === "open" ? <tr><th>Reference number</th><th>Client</th><th>Cupboard</th><th>Row</th><th>Column</th><th>Out of filing</th><th>Status</th>{canEdit ? <th>Update</th> : null}</tr> : tab === "closed" ? <tr><th>Reference number</th><th>Client</th><th>Storage number</th><th>Status</th>{canEdit ? <th>Update</th> : null}</tr> : <tr><th>Reference number</th><th>Client</th><th>Storage number</th><th>Barcode number</th>{canEdit ? <th>Update</th> : null}</tr>}</thead>
+        <tbody>{files.map((file) => {
+          const outValue = file.borrowerId ? `employee:${file.borrowerId}` : file.outOfFilingLocation ?? "";
+          const clientName = `${file.matter.clientName} ${file.matter.clientSurname}`;
+          return <tr key={file.id}>
+            <td><Link href={`/matters/${file.matter.id}`}>{file.matter.matterNumber}</Link></td><td>{clientName}</td>
+            {tab === "open" ? <><td>{file.cupboard || "—"}</td><td>{file.shelfRow || "—"}</td><td>{file.shelfColumn || "—"}</td><td>{file.borrower?.name ?? file.outOfFilingLocation ?? "In filing"}</td><td>{file.fileStatus}</td></> : tab === "closed" ? <><td>{file.boxNumber || "—"}</td><td>{file.storageStatus === "Storage" ? "Storage" : "In office"}</td></> : <><td>{file.boxNumber || "—"}</td><td>{file.barcodeReference || "—"}</td></>}
+            {canEdit ? <td><details className="physical-file-edit"><summary>Edit</summary><ActionForm action={updatePhysicalFile} className="physical-file-edit-form">
+              <input type="hidden" name="fileId" value={file.id} />
+              <label className="foundation-field"><span>Status</span><select name="fileStatus" defaultValue={file.fileStatus}><option value="Open">Open</option><option value="Closed">Closed</option></select></label>
+              <label className="foundation-field"><span>Cupboard</span><input name="cupboard" maxLength={80} defaultValue={file.cupboard ?? ""} placeholder="e.g. Cabinet 1" /></label>
+              <div className="physical-file-location-fields">
+                <label className="foundation-field"><span>Row</span><input name="shelfRow" maxLength={40} defaultValue={file.shelfRow ?? ""} placeholder="e.g. 1" /></label>
+                <label className="foundation-field"><span>Column</span><input name="shelfColumn" maxLength={40} defaultValue={file.shelfColumn ?? ""} placeholder="e.g. A" /></label>
+              </div>
+              <label className="foundation-field"><span>Out-of-filing location</span><select name="outOfFilingLocation" defaultValue={outValue}><option value="">In filing</option>{employees.map((employee) => <option key={employee.id} value={`employee:${employee.id}`}>{employee.name}</option>)}<option>Court shelf</option><option>Court</option><option>Out of office</option></select></label>
+              <label className="foundation-field"><span>Closed-file status</span><select name="storageStatus" defaultValue={file.storageStatus}><option value="InOffice">In office</option><option value="Storage">Storage</option></select></label>
+              <label className="foundation-field"><span>Storage number / box number</span><input name="boxNumber" maxLength={120} defaultValue={file.boxNumber ?? ""} /></label>
+              <label className="foundation-field"><span>Warehouse barcode number</span><input name="barcodeReference" maxLength={160} defaultValue={file.barcodeReference ?? ""} /></label>
+              <SubmitButton>Save file</SubmitButton>
+            </ActionForm></details></td> : null}
+          </tr>;
+        })}{!files.length ? <tr><td colSpan={tab === "open" ? (canEdit ? 8 : 7) : canEdit ? 5 : 4}>No files match this search.</td></tr> : null}</tbody>
+      </table></div>
+      {files.length === 500 ? <p className="foundation-muted">Showing the first 500 records. Narrow your search to find older entries.</p> : null}
     </section>
   );
 }

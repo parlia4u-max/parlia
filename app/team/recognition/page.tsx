@@ -1,79 +1,55 @@
+import Link from "next/link";
 import { castEmployeeVote } from "@/app/actions/team";
 import { ActionForm, SubmitButton } from "@/components/action-form";
 import { FoundationHeader } from "@/components/foundation";
-import { hasPermission, permissionScope, requirePermission } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { employeeVotePeriod } from "@/lib/team-rules";
+import { employeeVoteDeadline, employeeVotePeriod } from "@/lib/team-rules";
 
 export default async function TeamRecognitionPage() {
-  const user = await requirePermission("people");
+  const user = await requireUser();
   const db = getDb();
-  const scope = permissionScope(user, "people");
-  const [reports, supervisors] = await Promise.all([
-    scope === "Team"
-      ? db.supervisorLink.findMany({ where: { firmId: user.firmId, supervisorId: user.id }, select: { userId: true } })
-      : Promise.resolve([]),
-    scope !== "Firm"
-      ? db.supervisorLink.findMany({ where: { firmId: user.firmId, userId: user.id }, select: { supervisorId: true } })
-      : Promise.resolve([]),
-  ]);
-  const allowedIds = scope === "Firm" ? undefined : [...new Set([...reports.map((row) => row.userId), ...supervisors.map((row) => row.supervisorId)])];
-  const [colleagues, existingVote] = await Promise.all([
+  const period = employeeVotePeriod();
+  const [colleagues, settings, existingVote, publications] = await Promise.all([
     db.user.findMany({
-      where: {
-        firmId: user.firmId,
-        active: true,
-        isOwner: false,
-        id: { not: user.id, ...(allowedIds ? { in: allowedIds } : {}) },
-      },
+      where: { firmId: user.firmId, active: true, isOwner: false, id: { not: user.id } },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
-    db.teamEmployeeVote.findFirst({ where: { firmId: user.firmId, period: employeeVotePeriod(), voterId: user.id }, select: { id: true } }),
+    db.teamRecognitionSettings.findUnique({ where: { firmId: user.firmId } }),
+    db.teamEmployeeVote.findUnique({ where: { firmId_period_voterId: { firmId: user.firmId, period, voterId: user.id } }, select: { nomineeId: true, nomineeName: true, reason: true, anonymous: true } }),
+    db.teamRecognitionPublication.findMany({ where: { firmId: user.firmId }, orderBy: { period: "desc" }, take: 12 }),
   ]);
-  const canVote = hasPermission(user, "people", "Edit");
-  let results: { id: string; name: string; count: number }[] = [];
-  if (user.isOwner) {
-    const aggregates = await db.teamEmployeeVote.groupBy({
-      by: ["nomineeId"],
-      where: { firmId: user.firmId, period: employeeVotePeriod() },
-      _count: { _all: true },
-    });
-    const nominees = await db.user.findMany({
-      where: { firmId: user.firmId, active: true, id: { in: aggregates.map((row) => row.nomineeId) } },
-      select: { id: true, name: true },
-    });
-    results = aggregates.map((row) => ({
-      id: row.nomineeId,
-      name: nominees.find((nominee) => nominee.id === row.nomineeId)?.name ?? "Former staff member",
-      count: row._count._all,
-    })).sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
-  }
+  const externalNominees = Array.isArray(settings?.externalNominees) ? settings.externalNominees.filter((name): name is string => typeof name === "string") : [];
+  const deadline = employeeVoteDeadline(period, settings?.dueDay ?? 25, settings?.dueTime ?? "17:00");
+  const published = publications.find((publication) => publication.period === period);
+  const canEditVote = new Date() < deadline && !published;
+  const existingChoice = existingVote?.nomineeId ?? (existingVote ? `external:${existingVote.nomineeName}` : "");
 
   return (
     <section className="foundation-page">
       <FoundationHeader title="Employee of the month" firm={user.firm.name} isOwner={user.isOwner} />
-      <p className="foundation-intro">One private vote per active account each month. Ballots and voter identities are never shown in the results; only the firm owner can view current-period totals.</p>
+      <p className="foundation-intro">Vote for a colleague or owner-added nominee. Your ballot is private, and you may change it until the monthly deadline.</p>
       <section className="foundation-panel">
-        <h2>Vote for {employeeVotePeriod()}</h2>
-        {existingVote ? <p className="foundation-notice">Your vote has been recorded. Your selection is private and cannot be changed this month.</p>
-          : canVote && colleagues.length ? (
+        <div className="team-meeting-heading"><div><p className="eyebrow">{period}</p><h2>Cast your vote</h2></div><span>Due {deadline.toLocaleString()}</span></div>
+        {published ? <p className="foundation-notice">The result has been published: {published.winnerName}.</p>
+          : canEditVote && (colleagues.length || externalNominees.length) ? (
             <ActionForm action={castEmployeeVote} className="foundation-form">
-              <label className="foundation-field"><span>Colleague</span><select name="nomineeId" required defaultValue=""><option value="" disabled>Choose a colleague</option>{colleagues.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
-              <SubmitButton>Cast private vote</SubmitButton>
+              <label className="foundation-field"><span>Team member</span><select name="nominee" required defaultValue={existingChoice}><option value="" disabled>Choose a team member</option>{colleagues.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}{externalNominees.map((name) => <option key={name} value={`external:${name}`}>{name}</option>)}</select></label>
+              <label className="foundation-field"><span>Why are you nominating them? (optional)</span><textarea name="reason" maxLength={500} rows={3} defaultValue={existingVote?.reason ?? ""} /></label>
+              <label className="team-checkbox"><input type="checkbox" name="anonymous" defaultChecked={existingVote?.anonymous ?? false} /> Keep my ballot anonymous</label>
+              <SubmitButton>{existingVote ? "Update my vote" : "Submit my vote"}</SubmitButton>
             </ActionForm>
-          ) : !canVote ? <p className="foundation-muted">Your people permission allows viewing but not voting.</p>
-            : <p className="foundation-muted">No eligible colleagues are available within your people scope.</p>}
+          ) : existingVote && !published ? <p className="foundation-notice">Your ballot is saved. Voting closed at {deadline.toLocaleString()}.</p>
+            : <p className="foundation-muted">Voting is closed or no nominees are available. Ask the owner to configure nominees for a future month.</p>}
       </section>
-      {user.isOwner ? (
+      {publications.length ? (
         <section className="foundation-panel">
-          <h2>Owner-only results · {employeeVotePeriod()}</h2>
-          {results.length ? (
-            <ol className="team-vote-results">{results.map((result) => <li key={result.id}><strong>{result.name}</strong><span>{result.count} {result.count === 1 ? "vote" : "votes"}</span></li>)}</ol>
-          ) : <p className="foundation-muted">No votes have been recorded for this period.</p>}
-          <p className="foundation-muted">Only aggregate totals are displayed. Individual ballots and voter identities are not available here.</p>
+          <h2>Previous winners</h2>
+          <ol className="team-vote-results">{publications.map((publication) => <li key={publication.id}><strong>{publication.period}</strong><span>{publication.winnerName}</span></li>)}</ol>
         </section>
       ) : null}
+      {user.isOwner ? <p><Link href="/settings/employee-recognition">Manage recognition settings and certificates</Link></p> : null}
     </section>
   );
 }

@@ -29,3 +29,11 @@ export function tracingPolicy({
 export function isDutyMethod(value: string): value is (typeof DUTY_METHODS)[number] {
   return (DUTY_METHODS as readonly string[]).includes(value);
 }
+
+export type CourtRunStatus = "Assigned" | "Attending" | "Completed";
+
+export function courtRunStatus(status: string, dueAt: Date | null, now = new Date()): CourtRunStatus {
+  if (status === "Completed" || status === "Returned") return "Completed";
+  if (dueAt && dueAt.toISOString().slice(0, 10) === now.toISOString().slice(0, 10)) return "Attending";
+  return "Assigned";
+}

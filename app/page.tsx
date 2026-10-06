@@ -12,8 +12,15 @@ export default async function HomePage() {
   const canViewTasks = hasPermission(user, "tasks");
   const canEditTasks = hasPermission(user, "tasks", "Edit");
   const canViewMatters = hasPermission(user, "matters");
+  const canViewCalendar = hasPermission(user, "calendar");
   const taskScope = permissionScope(user, "tasks");
   const matterScope = permissionScope(user, "matters");
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const weekEnd = new Date(todayStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
   const [taskReports, matterReports, configuration, staffCount, pendingInvitations] = await Promise.all([
     canViewTasks && taskScope !== "Firm"
       ? db.supervisorLink.findMany({ where: { firmId: user.firmId, supervisorId: user.id, user: { firmId: user.firmId, active: true } }, select: { userId: true } })
@@ -34,7 +41,7 @@ export default async function HomePage() {
   const matterResponsibleIds = matterScope === "Firm" ? undefined : matterScope === "Team" ? [user.id, ...matterReportIds] : [user.id];
   const published = configuration?.published && typeof configuration.published === "object" ? configuration.published as Record<string, unknown> : {};
   const urgencyBands = Array.isArray(published.urgencyBands) ? published.urgencyBands as UrgencyBand[] : [];
-  const [tasks, matterCount, onHoldCount, openTaskCount, draftingCount] = await Promise.all([
+  const [tasks, matterCount, onHoldCount, openTaskCount, draftingCount, overdueTaskCount, dueTodayCount, reviewDueCount, upcomingTasks] = await Promise.all([
     canViewTasks
       ? db.task.findMany({
             where: { firmId: user.firmId, status: "Open", assignedToId: user.id },
@@ -51,7 +58,43 @@ export default async function HomePage() {
     canViewMatters ? db.matter.count({ where: { firmId: user.firmId, status: "OnHold", ...(matterResponsibleIds ? { responsibleId: { in: matterResponsibleIds } } : {}) } }) : Promise.resolve(null),
     canViewTasks ? db.task.count({ where: { firmId: user.firmId, status: "Open", assignedToId: user.id } }) : Promise.resolve(null),
     canViewTasks ? db.task.count({ where: { firmId: user.firmId, status: "Open", category: "Drafting", assignedToId: user.id } }) : Promise.resolve(null),
+    canViewTasks ? db.task.count({ where: { firmId: user.firmId, status: "Open", assignedToId: user.id, dueAt: { lt: todayStart } } }) : Promise.resolve(null),
+    canViewTasks ? db.task.count({ where: { firmId: user.firmId, status: "Open", assignedToId: user.id, dueAt: { gte: todayStart, lt: tomorrowStart } } }) : Promise.resolve(null),
+    canViewMatters ? db.matter.count({ where: { firmId: user.firmId, status: { not: "Closed" }, reviewDate: { gte: todayStart, lt: weekEnd }, ...(matterResponsibleIds ? { responsibleId: { in: matterResponsibleIds } } : {}) } }) : Promise.resolve(null),
+    canViewTasks ? db.task.findMany({
+      where: { firmId: user.firmId, status: "Open", assignedToId: user.id, dueAt: { gte: todayStart, lt: weekEnd } },
+      select: { id: true, title: true, category: true, dueAt: true },
+      orderBy: { dueAt: "asc" },
+      take: 8,
+    }) : Promise.resolve([]),
   ]);
+  const [upcomingEvents, upcomingMeetings] = canViewCalendar ? await Promise.all([
+    db.calendarEvent.findMany({
+      where: {
+        firmId: user.firmId,
+        startAt: { gte: todayStart, lt: weekEnd },
+        OR: [{ ownerId: user.id }, { attendees: { some: { firmId: user.firmId, userId: user.id } } }],
+      },
+      select: { id: true, title: true, startAt: true },
+      orderBy: { startAt: "asc" },
+      take: 8,
+    }),
+    db.teamMeeting.findMany({
+      where: {
+        firmId: user.firmId,
+        startsAt: { gte: todayStart, lt: weekEnd },
+        OR: [{ createdById: user.id }, { participants: { some: { firmId: user.firmId, userId: user.id } } }],
+      },
+      select: { id: true, title: true, startsAt: true },
+      orderBy: { startsAt: "asc" },
+      take: 8,
+    }),
+  ]) : [[], []];
+  const agenda = [
+    ...upcomingEvents.map((event) => ({ id: `event-${event.id}`, title: event.title, date: event.startAt, type: "Calendar event", href: "/calendar" })),
+    ...upcomingMeetings.map((meeting) => ({ id: `meeting-${meeting.id}`, title: meeting.title, date: meeting.startsAt, type: "Team meeting", href: "/team/meetings" })),
+    ...upcomingTasks.flatMap((task) => task.dueAt ? [{ id: `task-${task.id}`, title: task.title, date: task.dueAt, type: `${task.category} task due`, href: "/tasks" }] : []),
+  ].sort((left, right) => left.date.getTime() - right.date.getTime()).slice(0, 8);
   const sortedTasks = tasks.map((task) => ({ ...task, urgency: taskUrgency(task.dueAt, urgencyBands) }))
     .sort((left, right) => (left.urgency.daysUntilDue ?? Number.POSITIVE_INFINITY) - (right.urgency.daysUntilDue ?? Number.POSITIVE_INFINITY))
     .slice(0, 8);
@@ -69,11 +112,20 @@ export default async function HomePage() {
 
   return (
     <section className="dashboard-page">
-      <header className="dashboard-header">
-        <p className="eyebrow">YOUR FIRM</p>
-        <h1>Welcome, {user.name}</h1>
-        <p>{user.firm.name} · {user.isOwner ? "Owner" : user.role?.name ?? "Staff"}</p>
+      <header className="dashboard-header dashboard-hero">
+        <div>
+          <p className="eyebrow">{new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(new Date())}</p>
+          <h1>Welcome, {user.name}</h1>
+          <p>{user.firm.name} · {user.isOwner ? "Owner" : user.role?.name ?? "Staff"}</p>
+        </div>
+        <Link className="button-primary dashboard-calendar-link" href="/calendar">Open calendar</Link>
       </header>
+      <section className="dashboard-pulse" aria-label="Today's overview">
+        {canViewTasks ? <Link href="/tasks?status=Open"><strong>{overdueTaskCount}</strong><span>Overdue tasks</span></Link> : null}
+        {canViewTasks ? <Link href="/tasks?status=Open"><strong>{dueTodayCount}</strong><span>Due today</span></Link> : null}
+        {canViewMatters ? <Link href="/matters"><strong>{reviewDueCount}</strong><span>Matter reviews this week</span></Link> : null}
+        {canViewCalendar ? <Link href="/calendar"><strong>{agenda.length}</strong><span>Upcoming items this week</span></Link> : null}
+      </section>
       <div className="foundation-cards">
         {canViewMatters ? (
           <article className="dashboard-block">
@@ -112,6 +164,18 @@ export default async function HomePage() {
         ) : null}
       </div>
       {canViewMatters ? <ConsultationRequestsPanel firmId={user.firmId} canHandle={hasPermission(user, "matters", "Edit")} /> : null}
+      <section className="foundation-panel dashboard-agenda">
+        <div className="dashboard-panel-heading"><div><p className="eyebrow">NEXT SEVEN DAYS</p><h2>Coming up</h2></div><Link href={canViewCalendar ? "/calendar" : "/tasks"}>Open schedule</Link></div>
+        {agenda.length ? <ol className="dashboard-agenda-list">
+          {agenda.map((item) => (
+            <li key={item.id}>
+              <time dateTime={item.date.toISOString()}><strong>{new Intl.DateTimeFormat("en", { weekday: "short", month: "short", day: "numeric" }).format(item.date)}</strong><span>{new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(item.date)}</span></time>
+              <div><span className="dashboard-agenda-type">{item.type}</span><strong>{item.title}</strong></div>
+              <Link href={item.href} aria-label={`Open ${item.type.toLowerCase()}: ${item.title}`}>Open</Link>
+            </li>
+          ))}
+        </ol> : <p className="foundation-muted">No upcoming events or task deadlines in the next seven days.</p>}
+      </section>
       {showTeamSummary ? (
         <section className="foundation-panel">
           <h2>Team work</h2>

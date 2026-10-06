@@ -184,6 +184,7 @@ export async function createMatter(_state: string | null, formData: FormData): P
           status,
           onHoldReason,
           reviewDate,
+          physicalFile: { create: { location: "", folder: "", fileStatus: "Open", storageStatus: "InOffice" } },
         },
         select: { id: true },
       });
@@ -608,6 +609,7 @@ async function importMatterRow(
           otherReferences: row.otherReferences || null,
           caseNumber: row.caseNumber || null,
           status: stage.kind === "C" || stage.kind === "X" ? "Closed" : "Active",
+          physicalFile: { create: { location: "", folder: "", fileStatus: "Open", storageStatus: "InOffice" } },
         },
         select: { id: true },
       });

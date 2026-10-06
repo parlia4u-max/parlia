@@ -8,7 +8,7 @@ import type { ModuleKey, PermissionLevel } from "@/lib/permissions";
 export { hasPermission, permissionScope } from "@/lib/permissions";
 
 const COOKIE = "parlia_session";
-const IDLE_MILLISECONDS = 30 * 60 * 1000;
+const IDLE_MILLISECONDS = 14 * 24 * 60 * 60 * 1000;
 const REFRESH_AFTER_MILLISECONDS = 5 * 60 * 1000;
 const cookieOptions = {
   httpOnly: true,

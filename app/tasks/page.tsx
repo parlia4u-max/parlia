@@ -6,8 +6,9 @@ import { FoundationHeader } from "@/components/foundation";
 import { requirePermission, hasPermission, permissionScope } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { taskUrgency, type UrgencyBand } from "@/lib/matter-rules";
+import { taskCategoriesFromConfig } from "@/lib/matter-config";
 
-type TaskSearch = { q?: string; status?: string };
+type TaskSearch = { q?: string; status?: string; category?: string };
 
 export default async function MyTodoPage({ searchParams }: { searchParams: Promise<TaskSearch> }) {
   const user = await requirePermission("tasks");
@@ -28,17 +29,25 @@ export default async function MyTodoPage({ searchParams }: { searchParams: Promi
   const taskIds = scope === "Firm" ? undefined : [user.id, ...reportIds];
   const q = query.q?.trim().slice(0, 120) ?? "";
   const status = ["Open", "Complete", "All"].includes(query.status ?? "") ? query.status ?? "Open" : "Open";
-  const [tasks, configuration, assignees] = await Promise.all([
+  const category = query.category?.trim().slice(0, 40) ?? "";
+  const taskVisibilityWhere = {
+    firmId: user.firmId,
+    ...(taskIds ? { assignedToId: { in: taskIds } } : {}),
+  };
+  const taskSearchWhere = {
+    ...taskVisibilityWhere,
+    ...(status === "All" ? {} : { status: status as "Open" | "Complete" }),
+    ...(q ? { OR: [
+      { title: { contains: q, mode: "insensitive" as const } },
+      { category: { contains: q, mode: "insensitive" as const } },
+      { stage: { contains: q, mode: "insensitive" as const } },
+    ] } : {}),
+  };
+  const [tasks, configuration, assignees, categoryTotals] = await Promise.all([
     db.task.findMany({
       where: {
-        firmId: user.firmId,
-        ...(taskIds ? { assignedToId: { in: taskIds } } : {}),
-        ...(status === "All" ? {} : { status: status as "Open" | "Complete" }),
-        ...(q ? { OR: [
-          { title: { contains: q, mode: "insensitive" } },
-          { category: { contains: q, mode: "insensitive" } },
-          { stage: { contains: q, mode: "insensitive" } },
-        ] } : {}),
+        ...taskSearchWhere,
+        ...(category ? { category } : {}),
       },
       select: {
         id: true,
@@ -59,8 +68,12 @@ export default async function MyTodoPage({ searchParams }: { searchParams: Promi
     taskIds
       ? db.user.findMany({ where: { firmId: user.firmId, active: true, id: { in: taskIds } }, select: { id: true, name: true } })
       : db.user.findMany({ where: { firmId: user.firmId, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    db.task.groupBy({ by: ["category"], where: taskSearchWhere, _count: { _all: true } }),
   ]);
   const published = configuration?.published && typeof configuration.published === "object" ? configuration.published as Record<string, unknown> : {};
+  const categoryCounts = new Map(categoryTotals.map((entry) => [entry.category, entry._count._all]));
+  const categories = [...new Set([...taskCategoriesFromConfig(published), ...categoryCounts.keys()])].sort((left, right) => left.localeCompare(right));
+  const selectedCategory = categories.includes(category) ? category : "";
   const urgencyBands = Array.isArray(published.urgencyBands) ? published.urgencyBands as UrgencyBand[] : [];
   const canEdit = hasPermission(user, "tasks", "Edit");
   const tasksWithUrgency = tasks.map((task) => ({ ...task, urgency: taskUrgency(task.dueAt, urgencyBands) }))
@@ -72,6 +85,7 @@ export default async function MyTodoPage({ searchParams }: { searchParams: Promi
       <p className="foundation-intro">Your assigned tasks are ordered using this firm’s published due-date urgency bands. Supervisors see tasks assigned to their direct reports where their role scope allows it.</p>
       <form action="/tasks" className="foundation-inline-form matter-search">
         <label className="foundation-field"><span>Search tasks</span><input name="q" defaultValue={q} maxLength={120} placeholder="Task title, category or stage" /></label>
+        <label className="foundation-field"><span>Category</span><select name="category" defaultValue={selectedCategory}><option value="">All categories</option>{categories.map((taskCategory) => <option key={taskCategory} value={taskCategory}>{taskCategory} ({categoryCounts.get(taskCategory) ?? 0})</option>)}</select></label>
         <label className="foundation-field"><span>Task status</span><select name="status" defaultValue={status}><option value="Open">Open</option><option value="Complete">Complete</option><option value="All">All</option></select></label>
         <button className="button-primary" type="submit">Search</button>
       </form>
@@ -111,7 +125,7 @@ export default async function MyTodoPage({ searchParams }: { searchParams: Promi
             </article>
           );
         })}
-        {!tasks.length ? <section className="foundation-panel"><p>No tasks match this search.</p></section> : null}
+        {!tasks.length ? <section className="foundation-panel"><p>No tasks match these filters.</p></section> : null}
         {tasks.length === 500 ? <p className="foundation-muted">Showing the first 500 matching tasks. Narrow your search for additional results.</p> : null}
       </div>
     </section>

@@ -1,10 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { employeeVotePeriod, meetingVisibleInPeopleScope, parseMeetingActionItems } from "../lib/team-rules.ts";
+import { employeeVoteDeadline, employeeVotePeriod, meetingVisibleInPeopleScope, parseMeetingActionItems } from "../lib/team-rules.ts";
 
 test("employee vote period is a stable UTC year-month key", () => {
   assert.equal(employeeVotePeriod(new Date("2026-10-01T00:30:00.000Z")), "2026-10");
   assert.equal(employeeVotePeriod(new Date("2027-01-01T00:00:00.000Z")), "2027-01");
+});
+
+test("employee vote deadlines validate settings and clamp to the month's last day", () => {
+  assert.equal(employeeVoteDeadline("2026-02", 31, "17:30").toISOString(), "2026-02-28T17:30:00.000Z");
+  assert.equal(employeeVoteDeadline("2028-02", 29, "09:00").toISOString(), "2028-02-29T09:00:00.000Z");
+  assert.throws(() => employeeVoteDeadline("2026-13", 25, "17:00"), /period/);
+  assert.throws(() => employeeVoteDeadline("2026-10", 0, "17:00"), /deadline settings/);
+  assert.throws(() => employeeVoteDeadline("2026-10", 25, "25:00"), /deadline settings/);
 });
 
 test("meeting visibility obeys own, team and firm people scopes", () => {

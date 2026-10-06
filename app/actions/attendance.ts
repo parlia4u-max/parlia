@@ -113,7 +113,7 @@ export async function recordAttendanceEvent(_state: string | null, formData: For
         if (!duty) throw new ActionError("That duty is not assigned to you in this firm.");
         const currentDutyId = duty.id;
         if (type === "DutyCheckIn") {
-          const scheduled = await tx.dutyRecord.findFirst({ where: { id: currentDutyId, firmId: user.firmId, status: "Scheduled" }, select: { id: true } });
+          const scheduled = await tx.dutyRecord.findFirst({ where: { id: currentDutyId, firmId: user.firmId, status: { in: ["Scheduled", "Assigned"] } }, select: { id: true } });
           if (!scheduled) throw new ActionError("Only an active scheduled duty can be checked in.");
         }
         const dutyHistory = await tx.attendanceEvent.findMany({

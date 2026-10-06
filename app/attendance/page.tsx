@@ -94,7 +94,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
         firmId: user.firmId,
         assignedToId: user.id,
         OR: [
-          { status: "Scheduled" },
+          { status: { in: ["Scheduled", "Assigned"] } },
           { attendanceEvents: { some: { firmId: user.firmId, day: { userId: user.id }, type: "DutyCheckIn" } } },
         ],
       },
@@ -130,7 +130,7 @@ export default async function AttendancePage({ searchParams }: { searchParams: P
         ? hasOpenDuty ? [] : ["LunchStart", "ClockOut"]
         : [];
   const dutyActions: { type: "DutyCheckIn" | "DutyCheckOut"; duty: (typeof assignedDuties)[number] }[] = [];
-  for (const duty of (status === "On duty" ? assignedDuties : []).filter((item) => item.status === "Scheduled" || item.attendanceEvents.at(-1)?.type === "DutyCheckIn")) {
+  for (const duty of (status === "On duty" ? assignedDuties : []).filter((item) => item.status === "Scheduled" || item.status === "Assigned" || item.attendanceEvents.at(-1)?.type === "DutyCheckIn")) {
     const last = duty.attendanceEvents.at(-1)?.type;
     if (last === "DutyCheckIn") dutyActions.push({ type: "DutyCheckOut", duty });
     else if (!hasOpenDuty) dutyActions.push({ type: "DutyCheckIn", duty });
