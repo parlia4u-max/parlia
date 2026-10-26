@@ -52,7 +52,6 @@ const menuGroups: MenuGroup[] = [
     items: [
       { label: "Matters", href: "/matters", icon: "matter" },
       { label: "Stages board", href: "/matters/board", icon: "filing" },
-      { label: "Service & tracing", href: "/service-tracing", icon: "service" },
       { label: "Court runs", href: "/duties", icon: "filing" },
       { label: "Physical files", href: "/physical-files", icon: "filing" },
       { label: "Client submissions", href: "/client-review", icon: "messages" },
@@ -200,7 +199,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
         if (item.href === "/client-review") return navigationAccess.canEditMatters;
         if (item.href === "/accounts-review") return navigationAccess.canEditAccounts;
         if (item.href === "/settings/employee-recognition") return navigationAccess.canManageRecognition;
-        if (item.href === "/service-tracing" || item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
+        if (item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
         if (item.href === "/setup/start") return navigationAccess.isOwner;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||

@@ -132,6 +132,8 @@ model Firm {
   documentReferences DocumentReference[]
   taskNudges      TaskNudge[]
   calendarEvents CalendarEvent[]
+  calendars Calendar[]
+  calendarShares CalendarShare[]
   serviceRecords ServiceRecord[]
   serviceTraces ServiceTrace[]
   duties DutyRecord[]
@@ -218,6 +220,9 @@ model User {
   createdCalendarEvents CalendarEvent[] @relation("CalendarEventCreator")
   calendarEventAttendances CalendarEventAttendee[]
   completedCalendarChecklistItems CalendarEventChecklistItem[] @relation("CalendarChecklistCompleter")
+  createdCalendars Calendar[] @relation("CalendarCreator")
+  calendarShares CalendarShare[]
+  returnedDuties DutyRecord[] @relation("DutyReturner")
   createdServiceRecords ServiceRecord[] @relation("ServiceRecordCreator")
   createdServiceTraces ServiceTrace[] @relation("ServiceTraceCreator")
   createdDuties DutyRecord[] @relation("DutyCreator")
@@ -569,6 +574,14 @@ model DutyRecord {
   status       String   @default("Scheduled")
   returnedAt   DateTime?
   returnNotes  String?
+  returnedById String?
+  returnedBy   User?    @relation("DutyReturner", fields: [returnedById, firmId], references: [id, firmId], onDelete: NoAction)
+  jurisdiction String?
+  location     String?
+  reason       String?
+  department   String?
+  updateNotes  String?
+  completedAt  DateTime?
   assignedToId String
   assignedTo   User     @relation("DutyAssignee", fields: [assignedToId, firmId], references: [id, firmId], onDelete: Restrict)
   createdById  String
@@ -882,6 +895,8 @@ model CalendarEvent {
   meetingUrl    String?
   graphEventId  String?
   bookedByClientId String?
+  calendarId    String?
+  calendar      Calendar?             @relation(fields: [calendarId, firmId], references: [id, firmId], onDelete: NoAction)
   attendees     CalendarEventAttendee[]
   checklist     CalendarEventChecklistItem[]
   documents     CalendarEventDocumentReference[]
@@ -893,6 +908,48 @@ model CalendarEvent {
   @@index([firmId, ownerId, startAt])
   @@index([firmId, startAt, endAt])
   @@index([firmId, matterId, startAt])
+  @@index([firmId, calendarId, startAt])
+}
+
+enum CalendarAccess {
+  View
+  Edit
+}
+
+/// A shared calendar (e.g. "Court dates", "Boardroom"). The person who creates it decides who may view or edit it.
+model Calendar {
+  id          String          @id @default(cuid())
+  firmId      String
+  firm        Firm            @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  name        String
+  colour      String          @default("#B8913F")
+  description String?
+  /// Access for everyone in the firm; null means only the people listed in shares.
+  firmAccess  CalendarAccess?
+  createdById String
+  createdBy   User            @relation("CalendarCreator", fields: [createdById, firmId], references: [id, firmId], onDelete: Cascade)
+  shares      CalendarShare[]
+  events      CalendarEvent[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([id, firmId])
+  @@index([firmId, createdById])
+}
+
+model CalendarShare {
+  id         String         @id @default(cuid())
+  firmId     String
+  firm       Firm           @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  calendarId String
+  calendar   Calendar       @relation(fields: [calendarId, firmId], references: [id, firmId], onDelete: Cascade)
+  userId     String
+  user       User           @relation(fields: [userId, firmId], references: [id, firmId], onDelete: Cascade)
+  access     CalendarAccess @default(View)
+  createdAt  DateTime       @default(now())
+
+  @@unique([calendarId, userId])
+  @@index([firmId, userId])
 }
 
 model CalendarEventAttendee {
@@ -1476,4 +1533,4 @@ model TimeEntry {
   @@unique([id, firmId])
   @@index([firmId, matterId, startedAt])
   @@index([firmId, userId, endedAt])
-}
+}

@@ -9,7 +9,7 @@ import { taskCategoriesFromConfig } from "@/lib/matter-config";
 import { DUTY_METHODS, isDutyMethod, tracingPolicy } from "@/lib/module-e-rules";
 import type { Prisma } from "@prisma/client";
 
-const E_PATHS = ["/service-tracing", "/duties", "/physical-files", "/matters", "/tasks", "/calendar"];
+const E_PATHS = ["/duties", "/physical-files", "/matters", "/tasks", "/calendar"];
 
 async function authorizedEUser(level: "View" | "Edit" = "View") {
   const sessionUser = await getCurrentUser();
@@ -201,105 +201,6 @@ export async function addServiceTrace(_state: string | null, formData: FormData)
     });
     revalidate();
     return "success:Tracing attempt recorded.";
-  } catch (error) { return actionErrorMessage(error); }
-}
-
-export async function createDuty(_state: string | null, formData: FormData): Promise<string | null> {
-  try {
-    const user = await authorizedEUser("Edit");
-    const title = requiredText(formData, "title", "Duty", 240);
-    const method = requiredText(formData, "method", "Method", 40);
-    if (!isDutyMethod(method)) throw new ActionError(`Choose one of: ${DUTY_METHODS.join(", ")}.`);
-    const matter = await requireMatter(user, requiredText(formData, "matterId", "Matter reference", 80));
-    const assignedToId = await requireTaskAssignee(user, requiredText(formData, "assignedToId", "Assignee", 80));
-    const dueAt = optionalDate(formData, "dueAt", "Due date");
-    const db = getDb();
-    await db.$transaction(async (tx) => {
-      const duty = await tx.dutyRecord.create({
-        data: { firmId: user.firmId, matterId: matter.id, title, method, dueAt, assignedToId, createdById: user.id, status: "Assigned" },
-      });
-      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "court_run.created", entityType: "court-run", entityId: duty.id, details: { method, matterId: matter.id } } });
-    });
-    revalidate();
-    return "success:Duty created.";
-  } catch (error) { return actionErrorMessage(error); }
-}
-
-export async function updateMyDuty(_state: string | null, formData: FormData): Promise<string | null> {
-  try {
-    const user = await authorizedEUser();
-    const dutyId = requiredText(formData, "dutyId", "Court run", 80);
-    const updateNotes = optionalText(formData, "updateNotes", "Update", 1000);
-    const complete = formData.get("complete") === "on";
-    const db = getDb();
-    const duty = await db.dutyRecord.findFirst({
-      where: { id: dutyId, firmId: user.firmId, assignedToId: user.id },
-      select: { id: true, status: true, matterId: true },
-    });
-    if (!duty) throw new ActionError("This court run is not assigned to you.");
-    if (duty.status === "Completed" || duty.status === "Returned") throw new ActionError("This court run is already completed.");
-    await db.$transaction(async (tx) => {
-      await tx.dutyRecord.updateMany({
-        where: { id: duty.id, firmId: user.firmId, assignedToId: user.id, status: { not: "Completed" } },
-        data: { ...(complete ? { status: "Completed" } : {}), returnNotes: updateNotes },
-      });
-      if (duty.matterId) {
-        await tx.matterActivity.create({ data: { firmId: user.firmId, matterId: duty.matterId, actorId: user.id, action: complete ? "Court run completed" : "Court run updated", details: { dutyId, updateNotes } } });
-        await tx.matter.update({ where: { id_firmId: { id: duty.matterId, firmId: user.firmId } }, data: { lastActivityAt: new Date() } });
-      }
-      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: complete ? "court_run.completed" : "court_run.updated", entityType: "court-run", entityId: duty.id, details: { updateNotes } } });
-    });
-    revalidate();
-    return complete ? "success:Court run marked completed." : "success:Court run update saved.";
-  } catch (error) { return actionErrorMessage(error); }
-}
-
-export async function returnDuty(_state: string | null, formData: FormData): Promise<string | null> {
-  try {
-    const user = await authorizedEUser("Edit");
-    if (!hasPermission(user, "tasks", "Edit")) throw new ActionError("Task edit permission is required to return a duty and create its update tasks.");
-    const dutyId = requiredText(formData, "dutyId", "Duty", 80);
-    const internalAssigneeId = await requireTaskAssignee(user, requiredText(formData, "internalAssigneeId", "Internal update assignee", 80));
-    const externalAssigneeId = await requireTaskAssignee(user, requiredText(formData, "externalAssigneeId", "External update assignee", 80));
-    const returnNotes = optionalText(formData, "returnNotes", "Return notes", 1000);
-    const internalDueAt = optionalDate(formData, "internalDueAt", "Internal update due date");
-    const externalDueAt = optionalDate(formData, "externalDueAt", "External update due date");
-    const db = getDb();
-    const duty = await db.dutyRecord.findFirst({ where: { id: dutyId, firmId: user.firmId }, select: { id: true, matterId: true, title: true, method: true, assignedToId: true, status: true, returnedAt: true, returnNotes: true } });
-    if (!duty) throw new ActionError("Duty not found in this firm.");
-    if (duty.returnedAt) throw new ActionError("Documents for this court run have already been returned.");
-    if (duty.matterId) await requireMatter(user, duty.matterId);
-    else if (!canAccessTask({ userId: user.id, owner: user.isOwner, scope: permissionScope(user, "tasks"), assignedUserId: duty.assignedToId, directReportIds: await reportIds(user.id, user.firmId) })) {
-      throw new ActionError("This duty is outside your permitted assignment scope.");
-    }
-    await db.$transaction(async (tx) => {
-      const changed = await tx.dutyRecord.updateMany({
-        where: { id: duty.id, firmId: user.firmId, returnedAt: null },
-        data: { returnedAt: new Date(), ...(returnNotes ? { returnNotes: duty.returnNotes ? `${duty.returnNotes}\nDocument return: ${returnNotes}` : returnNotes } : {}) },
-      });
-      if (changed.count !== 1) throw new ActionError("Documents for this court run were already returned. Reload the page.");
-      const published = await activeSetup(tx, user.firmId);
-      const categories = taskCategoriesFromConfig(published);
-      if (!categories.includes("Updates internal") || !categories.includes("Updates external")) {
-        throw new ActionError("The firm must activate both Updates internal and Updates external task categories before recording a duty return.");
-      }
-      const tasks = [
-        { category: "Updates internal", title: `Internal update: ${duty.title}`, assignedToId: internalAssigneeId, dueAt: internalDueAt },
-        { category: "Updates external", title: `External update: ${duty.title}`, assignedToId: externalAssigneeId, dueAt: externalDueAt },
-      ];
-      for (const task of tasks) {
-        await tx.task.create({
-          data: { firmId: user.firmId, matterId: duty.matterId, title: task.title, category: task.category, assignedToId: task.assignedToId, createdById: user.id, dueAt: task.dueAt },
-        });
-      }
-      if (duty.matterId) {
-        await tx.matterActivity.create({ data: { firmId: user.firmId, matterId: duty.matterId, actorId: user.id, action: "Duty return recorded", details: { dutyId, method: duty.method, returnNotes } } });
-        await tx.matter.update({ where: { id_firmId: { id: duty.matterId, firmId: user.firmId } }, data: { lastActivityAt: new Date() } });
-      }
-      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "duty.returned", entityType: "duty", entityId: duty.id, details: { method: duty.method, returnNotes, taskCategories: ["Updates internal", "Updates external"] } } });
-    });
-    revalidate();
-    return "success:Duty return recorded and both update tasks created.";
   } catch (error) { return actionErrorMessage(error); }
 }
 

@@ -9,6 +9,30 @@ import { taskCategoriesFromConfig } from "@/lib/matter-config";
 import { effectiveCalendarVisibility } from "@/lib/calendar";
 import { notifyMatterClients } from "@/lib/client-notify";
 import { createTeamsMeeting, fetchOutlookEvent } from "@/lib/microsoft-graph";
+import { canAddToCalendar, canManageCalendar, cleanColour, parseShares } from "@/lib/calendar-access";
+
+/** Sends people back to the calendar view they were on instead of resetting it. */
+function returnPath(formData: FormData) {
+  const raw = String(formData.get("returnTo") ?? "");
+  if (!raw.startsWith("/calendar") || raw.startsWith("//")) return "/calendar";
+  const url = new URL(raw, "http://local");
+  url.searchParams.delete("newAt");
+  url.searchParams.delete("event");
+  url.searchParams.delete("newCalendar");
+  url.searchParams.delete("manage");
+  return `${url.pathname}${url.search}`;
+}
+
+/** Checks that a chosen shared calendar exists in this firm and that the person may add to it. */
+async function requireEditableCalendar(firmId: string, userId: string, isOwner: boolean, calendarId: string | null) {
+  if (!calendarId) return null;
+  const calendar = await getDb().calendar.findFirst({
+    where: { id: calendarId, firmId },
+    select: { id: true, createdById: true, firmAccess: true, shares: { select: { userId: true, access: true } } },
+  });
+  if (!calendar || !canAddToCalendar(calendar, userId, isOwner)) throw new ActionError("You can only add events to calendars you are allowed to edit.");
+  return calendar.id;
+}
 
 async function calendarUser(edit = false) {
   const current = await getCurrentUser();
@@ -104,6 +128,7 @@ export async function createCalendarEvent(_state: string | null, formData: FormD
     if (attendeeIds.length > 50 || attendeeIds.some((id) => !allowedOwners.includes(id))) {
       throw new ActionError("Choose attendees whose calendars you are allowed to see.");
     }
+    const calendarId = await requireEditableCalendar(user.firmId, user.id, user.isOwner, optionalText(formData.get("calendarId"), "Calendar", 80));
     const db = getDb();
     if (matterId) {
       if (!hasPermission(user, "matters")) throw new ActionError("You do not have permission to link a matter.");
@@ -134,7 +159,7 @@ export async function createCalendarEvent(_state: string | null, formData: FormD
     await db.$transaction(async (tx) => {
       const event = await tx.calendarEvent.create({
         data: {
-          firmId: user.firmId, ownerId: responsibleId, createdById: user.id, responsibleId,
+          firmId: user.firmId, ownerId: responsibleId, createdById: user.id, responsibleId, calendarId,
           matterId, title, description, startAt, endAt, audience, meetingUrl: finalMeetingUrl, graphEventId,
           attendees: { create: [...new Set(attendeeIds)].map((userId) => ({ firmId: user.firmId, userId })) },
           ...(documentLabel && documentUrl ? { documents: { create: { label: documentLabel, url: documentUrl } } } : {}),
@@ -142,7 +167,7 @@ export async function createCalendarEvent(_state: string | null, formData: FormD
         select: { id: true },
       });
       await tx.auditLog.create({
-        data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.created", entityType: "calendar-event", entityId: event.id, details: { audience, teams: Boolean(graphEventId) } },
+        data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.created", entityType: "calendar-event", entityId: event.id, details: { title, audience, teams: Boolean(graphEventId) } },
       });
     });
     if (audience === "Client" && matterId) {
@@ -152,7 +177,7 @@ export async function createCalendarEvent(_state: string | null, formData: FormD
   } catch (error) {
     return actionErrorMessage(error);
   }
-  redirect("/calendar");
+  redirect(returnPath(formData));
 }
 
 export async function updateCalendarEvent(_state: string | null, formData: FormData): Promise<string | null> {
@@ -162,10 +187,12 @@ export async function updateCalendarEvent(_state: string | null, formData: FormD
     const db = getDb();
     const allowedOwners = await permittedCalendarOwners(user);
     const event = await db.calendarEvent.findFirst({
-      where: { id: eventId, firmId: user.firmId, ownerId: { in: allowedOwners } },
-      select: { id: true, ownerId: true, createdById: true, matterId: true },
+      where: { id: eventId, firmId: user.firmId },
+      select: { id: true, ownerId: true, createdById: true, matterId: true, calendar: { select: { createdById: true, firmAccess: true, shares: { select: { userId: true, access: true } } } } },
     });
-    if (!event) throw new ActionError("This event is not in a calendar you are allowed to manage.");
+    const mayEdit = event && (event.calendar ? canAddToCalendar(event.calendar, user.id, user.isOwner) || event.createdById === user.id : allowedOwners.includes(event.ownerId));
+    if (!event || !mayEdit) throw new ActionError("This event is not in a calendar you are allowed to edit.");
+    const calendarId = await requireEditableCalendar(user.firmId, user.id, user.isOwner, optionalText(formData.get("calendarId"), "Calendar", 80));
     const title = requiredText(formData.get("title"), "Event name", 160);
     const startAt = dateTime(formData.get("startAt"), "Start time");
     const endAt = dateTime(formData.get("endAt"), "End time");
@@ -183,14 +210,14 @@ export async function updateCalendarEvent(_state: string | null, formData: FormD
     await db.$transaction(async (tx) => {
       await tx.calendarEvent.updateMany({
         where: { id: event.id, firmId: user.firmId },
-        data: { title, startAt, endAt, ownerId: responsibleId, responsibleId, audience, description },
+        data: { title, startAt, endAt, ownerId: responsibleId, responsibleId, audience, description, calendarId },
       });
       await tx.calendarEventAttendee.deleteMany({ where: { firmId: user.firmId, eventId: event.id } });
       if (attendeeIds.length) await tx.calendarEventAttendee.createMany({
         data: [...new Set(attendeeIds)].map((userId) => ({ firmId: user.firmId, eventId: event.id, userId })),
       });
       await tx.auditLog.create({
-        data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.updated", entityType: "calendar-event", entityId: event.id, details: { previousOwnerId: event.ownerId, audience } },
+        data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.updated", entityType: "calendar-event", entityId: event.id, details: { title, previousOwnerId: event.ownerId, audience } },
       });
     });
     if (audience === "Client" && event.matterId) {
@@ -200,7 +227,7 @@ export async function updateCalendarEvent(_state: string | null, formData: FormD
   } catch (error) {
     return actionErrorMessage(error);
   }
-  redirect("/calendar");
+  redirect(returnPath(formData));
 }
 
 export async function addCalendarChecklistItem(_state: string | null, formData: FormData): Promise<string | null> {
@@ -312,4 +339,106 @@ export async function syncCalendarFromOutlook(_state: string | null, _formData: 
   } catch (error) {
     return actionErrorMessage(error);
   }
+}
+
+export async function deleteCalendarEvent(_state: string | null, formData: FormData): Promise<string | null> {
+  try {
+    const user = await calendarUser(true);
+    const eventId = requiredText(formData.get("eventId"), "Event", 80);
+    const db = getDb();
+    const event = await db.calendarEvent.findFirst({
+      where: { id: eventId, firmId: user.firmId },
+      select: { id: true, createdById: true, ownerId: true, leaveRequestId: true, calendar: { select: { createdById: true, firmAccess: true, shares: { select: { userId: true, access: true } } } } },
+    });
+    if (!event) throw new ActionError("Event not found.");
+    if (event.leaveRequestId) throw new ActionError("Leave appears on the calendar automatically; change the leave request instead.");
+    const mayDelete = event.createdById === user.id || (event.calendar ? canAddToCalendar(event.calendar, user.id, user.isOwner) : event.ownerId === user.id);
+    if (!mayDelete) throw new ActionError("Only the person who added this event, or someone who may edit its calendar, can delete it.");
+    await db.$transaction(async (tx) => {
+      await tx.calendarEvent.deleteMany({ where: { id: event.id, firmId: user.firmId } });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "calendar.event.deleted", entityType: "calendar-event", entityId: event.id } });
+    });
+    revalidatePath("/calendar");
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+  redirect(returnPath(formData));
+}
+
+/** Reads the calendar settings form: name, colour, description, firm-wide access and per-person access. */
+async function calendarSettings(formData: FormData, firmId: string, creatorId: string) {
+  const name = requiredText(formData.get("name"), "Calendar name", 80);
+  const description = optionalText(formData.get("description"), "Description", 500);
+  const colour = cleanColour(formData.get("colour"));
+  const firmAccessRaw = String(formData.get("firmAccess") ?? "");
+  const firmAccess = firmAccessRaw === "View" || firmAccessRaw === "Edit" ? firmAccessRaw : null;
+  const colleagues = await getDb().user.findMany({ where: { firmId, active: true }, select: { id: true } });
+  const ids = colleagues.map((person) => person.id);
+  const shares = parseShares(ids.map((userId) => ({ userId, access: formData.get(`access-${userId}`) })), ids, creatorId);
+  return { name, description, colour, firmAccess, shares } as const;
+}
+
+export async function createCalendar(_state: string | null, formData: FormData): Promise<string | null> {
+  try {
+    const user = await calendarUser();
+    const settings = await calendarSettings(formData, user.firmId, user.id);
+    const db = getDb();
+    const existing = await db.calendar.count({ where: { firmId: user.firmId, createdById: user.id } });
+    if (existing >= 50) throw new ActionError("You can create up to 50 calendars.");
+    await db.$transaction(async (tx) => {
+      const calendar = await tx.calendar.create({
+        data: {
+          firmId: user.firmId, createdById: user.id, name: settings.name, description: settings.description, colour: settings.colour, firmAccess: settings.firmAccess,
+          shares: { create: settings.shares.map((share) => ({ firmId: user.firmId, userId: share.userId, access: share.access })) },
+        },
+        select: { id: true },
+      });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "calendar.created", entityType: "calendar", entityId: calendar.id, details: { name: settings.name, shared: settings.shares.length, firmAccess: settings.firmAccess } } });
+    });
+    revalidatePath("/calendar");
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+  redirect(returnPath(formData));
+}
+
+export async function updateCalendar(_state: string | null, formData: FormData): Promise<string | null> {
+  try {
+    const user = await calendarUser();
+    const calendarId = requiredText(formData.get("calendarId"), "Calendar", 80);
+    const db = getDb();
+    const calendar = await db.calendar.findFirst({ where: { id: calendarId, firmId: user.firmId }, select: { id: true, createdById: true, firmAccess: true, shares: { select: { userId: true, access: true } } } });
+    if (!calendar || !canManageCalendar(calendar, user.id)) throw new ActionError("Only the person who created this calendar can change it.");
+    const settings = await calendarSettings(formData, user.firmId, user.id);
+    await db.$transaction(async (tx) => {
+      await tx.calendar.update({ where: { id: calendar.id }, data: { name: settings.name, description: settings.description, colour: settings.colour, firmAccess: settings.firmAccess } });
+      await tx.calendarShare.deleteMany({ where: { firmId: user.firmId, calendarId: calendar.id } });
+      if (settings.shares.length) await tx.calendarShare.createMany({ data: settings.shares.map((share) => ({ firmId: user.firmId, calendarId: calendar.id, userId: share.userId, access: share.access })) });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "calendar.updated", entityType: "calendar", entityId: calendar.id, details: { name: settings.name, shared: settings.shares.length, firmAccess: settings.firmAccess } } });
+    });
+    revalidatePath("/calendar");
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+  redirect(returnPath(formData));
+}
+
+export async function deleteCalendar(_state: string | null, formData: FormData): Promise<string | null> {
+  try {
+    const user = await calendarUser();
+    const calendarId = requiredText(formData.get("calendarId"), "Calendar", 80);
+    const db = getDb();
+    const calendar = await db.calendar.findFirst({ where: { id: calendarId, firmId: user.firmId }, select: { id: true, name: true, createdById: true, firmAccess: true, shares: { select: { userId: true, access: true } } } });
+    if (!calendar || !canManageCalendar(calendar, user.id)) throw new ActionError("Only the person who created this calendar can delete it.");
+    await db.$transaction(async (tx) => {
+      // Events are kept: they move back to the personal calendar of the person responsible.
+      await tx.calendarEvent.updateMany({ where: { firmId: user.firmId, calendarId: calendar.id }, data: { calendarId: null } });
+      await tx.calendar.delete({ where: { id: calendar.id } });
+      await tx.auditLog.create({ data: { firmId: user.firmId, actorId: user.id, action: "calendar.deleted", entityType: "calendar", entityId: calendar.id, details: { name: calendar.name } } });
+    });
+    revalidatePath("/calendar");
+  } catch (error) {
+    return actionErrorMessage(error);
+  }
+  redirect(returnPath(formData));
 }

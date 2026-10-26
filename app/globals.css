@@ -1706,3 +1706,94 @@ input:focus-visible {
 .dashboard-setup-banner p { margin: 0; color: #5f584e; }
 .dashboard-setup-banner a { white-space: nowrap; }
 @media (max-width: 640px) { .wizard-summary { grid-template-columns: 1fr; } .wizard-summary dd { margin-bottom: 8px; } }
+
+/* Calendar: shared calendars, colours, today and fuller views */
+.calendar-picker { display: grid; gap: 2px; padding: 10px; }
+.calendar-picker-heading { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 2px; color: #625a4f; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.calendar-picker-heading:first-of-type { margin-top: 0; }
+.calendar-new-link { color: #7d6227; font-size: 13px; letter-spacing: 0; text-transform: none; }
+.calendar-list-item { display: flex; align-items: center; gap: 7px; min-height: 28px; font-size: 14px; }
+.calendar-list-item i { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 3px; }
+.calendar-list-item input { width: 16px; height: 16px; accent-color: var(--gold); }
+.calendar-list-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.calendar-list-row small { color: #8a8174; font-size: 11px; white-space: nowrap; }
+.calendar-manage-link { color: #7d6227; font-size: 12px; }
+.calendar-hint { font-size: 13px; margin: 2px 0 4px; }
+.calendar-sync { padding: 8px 10px; }
+.calendar-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 4px 2px; color: #625a4f; font-size: 12px; }
+.calendar-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.calendar-legend i { width: 10px; height: 10px; border-radius: 3px; }
+.legend-event { background: #bfd3c1; } .legend-client { background: #ebc7c0; } .legend-task { background: #c3d6e6; } .legend-duty { background: #eddfbf; } .legend-meeting { background: #d5cde6; }
+.calendar-event { text-decoration: none; line-height: 1.25; }
+.calendar-event.has-colour { border-color: var(--event-colour); border-left-width: 4px; background: color-mix(in srgb, var(--event-colour) 22%, #fffdf8); }
+.calendar-event.is-compact { display: flex; gap: 5px; align-items: baseline; padding: 3px 6px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.calendar-event.is-compact .calendar-event-time { display: inline; margin: 0; font-size: 11px; }
+.calendar-day-cell { min-height: 128px; }
+.calendar-day-cell h3 { display: flex; align-items: center; justify-content: space-between; }
+.calendar-day-cell ul { gap: 4px; }
+.calendar-day-cell.is-today { background: #fbf5e7; }
+.calendar-day-cell.is-today .calendar-month-day { background: var(--gold); color: #fffdf8; }
+.calendar-month-add { visibility: hidden; border-radius: 6px; color: #7d6227; font-size: 18px; line-height: 1; padding: 0 6px; text-decoration: none; }
+.calendar-day-cell:hover .calendar-month-add, .calendar-month-add:focus-visible { visibility: visible; }
+.calendar-month-add:hover { background: #efe7d7; }
+.calendar-more { display: inline-block; margin-top: 4px; color: #7d6227; font-size: 13px; }
+.calendar-time-date { display: grid; gap: 4px; align-content: start; }
+.calendar-time-date.is-today strong { color: #7d6227; }
+.calendar-time-date.is-today { box-shadow: inset 0 -3px 0 var(--gold); }
+.calendar-time-slot.is-today { background: #fffaf0; }
+.calendar-time-row.is-half .calendar-time-label, .calendar-time-row.is-half .calendar-time-slot { border-bottom-style: dashed; border-bottom-color: #efe7d7; }
+.calendar-all-day { display: grid; gap: 3px; }
+.calendar-outside { margin: 0; border-bottom: 1px solid var(--line); background: #fbf5e7; font-size: 14px; padding: 8px 12px; }
+.calendar-agenda-day.is-today { background: #fbf5e7; }
+.calendar-agenda-day li { display: grid; gap: 2px; }
+.calendar-agenda-day li small { color: #625a4f; font-size: 12px; }
+.calendar-event-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 10px 0 14px; }
+.calendar-event-facts dt { font-weight: 700; }
+.calendar-event-facts dd { margin: 0; }
+.calendar-edit-details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.calendar-edit-details summary { cursor: pointer; font-weight: 650; }
+.calendar-danger { margin-top: 10px; }
+.calendar-colours { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; border: 0; padding: 0; }
+.calendar-colours legend { width: 100%; margin-bottom: 4px; font-weight: 600; }
+.calendar-colours label { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; cursor: pointer; }
+.calendar-colours input { width: 14px; height: 14px; margin: 0; accent-color: #fffdf8; }
+.calendar-share-list { display: grid; gap: 4px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.calendar-share-list p { margin: 0 0 4px; }
+.calendar-share-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 36px; border-bottom: 1px solid #f1eadb; }
+.calendar-share-row:last-child { border-bottom: 0; }
+.calendar-share-row select { min-height: 32px; border: 1px solid var(--line); border-radius: 7px; background: #fffdf8; font: inherit; font-size: 14px; }
+
+/* Court runs: checklist, batch sign-out and Staff Hub style register */
+.court-run-count { display: inline-grid; place-items: center; min-width: 1.4em; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--gold); color: #fff; font-size: 0.75em; }
+.court-run-checklist ul { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+.court-run-item { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 14px 16px; display: grid; gap: 10px; }
+.court-run-item.state-overdue { border-left: 4px solid #b4513f; }
+.court-run-item.state-done { opacity: 0.85; border-left: 4px solid #5c8a62; }
+.court-run-item-head { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: start; }
+.court-run-item-head p { margin: 2px 0 0; }
+.court-run-tick { width: 24px; height: 24px; border: 2px solid var(--gold); border-radius: 6px; display: grid; place-items: center; color: #5c8a62; font-weight: 700; }
+.court-run-notes { margin: 0; white-space: pre-wrap; font: inherit; font-size: 0.9em; background: var(--cream); border-radius: 10px; padding: 8px 12px; }
+.court-run-update-form { display: grid; gap: 8px; }
+.court-run-update-form textarea { width: 100%; }
+.court-run-buttons, .court-run-batch-actions, .court-run-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.court-run-batch { display: grid; gap: 12px; }
+.court-run-batch-table input, .court-run-batch-table select { width: 100%; min-width: 110px; }
+.court-run-update-cell { white-space: pre-wrap; max-width: 320px; font-size: 0.9em; }
+.court-run-status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8em; background: var(--powder-blue); }
+.court-run-status.status-overdue { background: var(--blush); }
+.court-run-status.status-done { background: var(--sage); }
+.court-run-status.status-returned { background: var(--lavender); }
+.button-link.danger { color: #b4513f; }
+@media (max-width: 640px) { .court-run-item-head { grid-template-columns: 28px 1fr; } .court-run-item-head .court-run-status { grid-column: 2; justify-self: start; } }
+
+/* Dashboard: owner panels and recent changes */
+.dashboard-owner { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 16px 0; }
+.dashboard-names { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; }
+.dashboard-names small { color: #6b6257; margin-left: 4px; }
+.dashboard-change-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; }
+.dashboard-change-list li { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.dashboard-change-list li:last-child { border-bottom: 0; }
+.dashboard-change-list p { margin: 0; }
+.dashboard-change-list time { color: #6b6257; font-size: 0.85em; white-space: nowrap; }
+.dashboard-change-group { font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gold); }
+@media (max-width: 640px) { .dashboard-change-list li { grid-template-columns: 1fr auto; } .dashboard-change-group { grid-column: 1 / -1; } }
