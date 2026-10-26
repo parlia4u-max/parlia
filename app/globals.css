@@ -1661,3 +1661,48 @@ input:focus-visible {
 .tracker-upcoming { background: #fff; }
 .tracker-tag { font-weight: 600; font-size: 0.9em; }
 .tracker-note { margin: 0.5rem 0; padding: 0.75rem; background: #fff; border-left: 4px solid #B8913F; }
+
+/* Guided firm set-up */
+.wizard { display: grid; gap: 4px; }
+.wizard-steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; padding: 0; list-style: none; }
+.wizard-steps button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; font-size: 15px; padding: 6px 14px 6px 6px; }
+.wizard-steps button:disabled { cursor: not-allowed; opacity: 0.5; }
+.wizard-steps span { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #eee8dc; font-weight: 700; font-size: 13px; }
+.wizard-steps .is-current button { border-color: var(--gold); font-weight: 600; }
+.wizard-steps .is-current span { background: var(--gold); color: #fffdf8; }
+.wizard-steps .is-done span { background: var(--sage); }
+.wizard .foundation-panel > p { margin-top: 6px; }
+.wizard-subheading { margin-top: 26px !important; }
+.wizard-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.wizard-chip { border: 1px dashed var(--gold); border-radius: 999px; background: transparent; color: var(--ink); cursor: pointer; font: inherit; font-size: 15px; padding: 5px 12px; }
+.wizard-chip:hover { background: #f4ecda; }
+.wizard-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); align-items: start; gap: 12px; margin-top: 12px; }
+.wizard-card { border: 1px solid var(--line); border-radius: 12px; background: #fffefb; padding: 14px; transition: border-color 0.15s, background 0.15s; }
+.wizard-card.is-selected { border-color: var(--gold); background: #fbf5e7; }
+.wizard-card label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.wizard-card input { margin-top: 4px; accent-color: var(--gold); }
+.wizard-card strong { display: block; }
+.wizard-card small { display: block; color: #5f584e; font-size: 14px; margin-top: 2px; }
+.wizard-link { border: 0; background: none; color: #7d6227; cursor: pointer; font: inherit; font-size: 14px; padding: 6px 0 0 26px; text-decoration: underline; }
+.wizard-stage-list { margin: 8px 0 0; padding-left: 44px; font-size: 14px; color: #3d372f; }
+.wizard-stage-list em { color: #7d6227; font-style: normal; }
+.wizard-bands { display: flex !important; flex-wrap: wrap; gap: 5px; margin-top: 8px !important; }
+.wizard-bands i { border-radius: 6px; color: var(--ink); font-style: normal; font-size: 13px; padding: 2px 7px; }
+.wizard-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; }
+.wizard-actions .button-primary, .wizard-actions .button-secondary { min-height: 44px; }
+.wizard-summary { display: grid; grid-template-columns: max-content 1fr; gap: 8px 18px; margin: 16px 0; }
+.wizard-summary dt { font-weight: 700; }
+.wizard-summary dd { margin: 0; }
+.wizard-next { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
+.wizard-next a { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); padding: 16px; text-decoration: none; }
+.wizard-next a:hover { border-color: var(--gold); background: #fbf5e7; }
+.wizard-next span { color: #5f584e; font-size: 14px; }
+.setup-guided-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border-color: var(--gold); background: #fbf5e7; }
+.setup-guided-panel h2 { margin: 0 0 4px !important; }
+.setup-guided-panel p { margin: 0; }
+.setup-guided-panel a.button-primary { display: inline-flex; align-items: center; text-decoration: none; }
+.dashboard-setup-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin: 18px 0; border: 1px solid var(--gold); border-radius: 15px; background: #fbf5e7; padding: 18px 22px; }
+.dashboard-setup-banner h2 { margin: 0 0 4px; font-size: 22px; }
+.dashboard-setup-banner p { margin: 0; color: #5f584e; }
+.dashboard-setup-banner a { white-space: nowrap; }
+@media (max-width: 640px) { .wizard-summary { grid-template-columns: 1fr; } .wizard-summary dd { margin-bottom: 8px; } }

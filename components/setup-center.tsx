@@ -74,6 +74,16 @@ export async function SetupHomePage() {
       <section className="foundation-page setup-page setup-desktop-content">
         <FoundationHeader title="Setup Centre" firm={firm.name} isOwner={user.isOwner} />
         <p className="foundation-intro">Configure this firm’s defaults in a private draft, review the checklist, then publish once. Drafts stay inactive until the owner publishes.</p>
+        {user.isOwner ? (
+          <section className="foundation-panel setup-guided-panel">
+            <div>
+              <p className="eyebrow">{config.publishedAt ? "QUICK CHANGES" : "START HERE"}</p>
+              <h2>{config.publishedAt ? "Change your set-up in five short steps" : "Set up your firm in about five minutes"}</h2>
+              <p>Answer a few plain questions; Parlia fills in matter types, stages, automatic tasks, roles and South African office rules for you.</p>
+            </div>
+            <Link className="button-primary" href="/setup/start">{config.publishedAt ? "Open guided set-up" : "Start guided set-up"}</Link>
+          </section>
+        ) : null}
         <section className="foundation-panel setup-publish-panel">
           <div>
             <p className="eyebrow">{config.publishedAt ? `PUBLISHED VERSION ${config.version}` : "NOT PUBLISHED YET"}</p>

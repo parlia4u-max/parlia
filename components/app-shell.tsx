@@ -83,6 +83,7 @@ const menuGroups: MenuGroup[] = [
   {
     label: "SETTINGS",
     items: [
+      { label: "Guided set-up", href: "/setup/start", icon: "setup" },
       { label: "Setup Centre", href: "/setup", icon: "setup", desktopOnly: true },
       { label: "Employee recognition settings", href: "/settings/employee-recognition", icon: "people" },
       { label: "Firm profile and branding", href: "/settings/firm-profile", icon: "setup" },
@@ -200,6 +201,7 @@ export function AppShell({ children, navigationAccess }: { children: React.React
         if (item.href === "/accounts-review") return navigationAccess.canEditAccounts;
         if (item.href === "/settings/employee-recognition") return navigationAccess.canManageRecognition;
         if (item.href === "/service-tracing" || item.href === "/duties" || item.href === "/physical-files") return navigationAccess.canViewMatters;
+        if (item.href === "/setup/start") return navigationAccess.isOwner;
         if (item.href === "/setup") return navigationAccess.isOwner || navigationAccess.setupHrefs.length > 0;
         if (item.href === "/settings/audit-log" || item.href === "/settings/subscription" ||
           item.href === "/settings/permissions" || item.href === "/settings/integrations" ||

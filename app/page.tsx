@@ -28,7 +28,7 @@ export default async function HomePage() {
     canViewMatters && matterScope === "Team"
       ? db.supervisorLink.findMany({ where: { firmId: user.firmId, supervisorId: user.id, user: { firmId: user.firmId, active: true } }, select: { userId: true } })
       : Promise.resolve([]),
-    db.setupConfiguration.findFirst({ where: { firmId: user.firmId }, select: { published: true } }),
+    db.setupConfiguration.findFirst({ where: { firmId: user.firmId }, select: { published: true, publishedAt: true } }),
     user.isOwner || hasPermission(user, "people") && permissionScope(user, "people") === "Firm"
       ? db.user.count({ where: { firmId: user.firmId, active: true, isOwner: false } })
       : Promise.resolve(null),
@@ -120,6 +120,15 @@ export default async function HomePage() {
         </div>
         <Link className="button-primary dashboard-calendar-link" href="/calendar">Open calendar</Link>
       </header>
+      {user.isOwner && !configuration?.publishedAt ? (
+        <section className="dashboard-setup-banner" aria-label="Finish setting up">
+          <div>
+            <h2>Finish setting up {user.firm.name}</h2>
+            <p>Five short steps – choose your types of work, roles and office rules. Parlia fills in the rest.</p>
+          </div>
+          <Link className="button-primary dashboard-calendar-link" href="/setup/start">Start guided set-up</Link>
+        </section>
+      ) : null}
       <section className="dashboard-pulse" aria-label="Today's overview">
         {canViewTasks ? <Link href="/tasks?status=Open"><strong>{overdueTaskCount}</strong><span>Overdue tasks</span></Link> : null}
         {canViewTasks ? <Link href="/tasks?status=Open"><strong>{dueTodayCount}</strong><span>Due today</span></Link> : null}
